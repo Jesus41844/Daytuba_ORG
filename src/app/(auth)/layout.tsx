@@ -1,6 +1,8 @@
 import * as React from "react";
 import Link from "next/link";
 
+import { ToasterWrapper } from "@/components/providers/toaster-wrapper";
+
 export default function AuthLayout({
   children,
 }: {
@@ -19,6 +21,7 @@ export default function AuthLayout({
         <span className="text-lg font-bold tracking-tight">Daytuba</span>
       </Link>
       <main className="w-full max-w-sm">{children}</main>
+      <ToasterWrapper />
     </div>
   );
 }

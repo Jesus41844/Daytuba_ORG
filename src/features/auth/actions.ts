@@ -1,72 +1,73 @@
-/* eslint-disable @next/next/no-location-assign-relative-destination -- hard navigation is required so the proxy and server components observe the freshly set __session cookie */
+"use server";
+
+import { compare, hash } from "bcryptjs";
+import { eq } from "drizzle-orm";
+import { redirect } from "next/navigation";
+import { z } from "zod";
+
+import { db } from "@/db";
+import { users } from "@/db/schema";
 import {
-  createUserWithEmailAndPassword,
-  GoogleAuthProvider,
-  reauthenticateWithCredential,
-  EmailAuthProvider,
-  signInWithEmailAndPassword,
-  signInWithPopup,
-  signOut,
-  updateProfile as firebaseUpdateProfile,
-  updatePassword as firebaseUpdatePassword,
-} from "firebase/auth";
-
-import { auth } from "@/lib/firebase/client";
+  createUserSession,
+  destroyCurrentSession,
+  requireSession,
+} from "@/lib/auth/session";
 import type { ActionResult } from "@/lib/errors";
+import { loginSchema, registerSchema } from "@/lib/validations";
 
-const SESSION_ENDPOINT = "/api/auth/session";
+const BCRYPT_ROUNDS = 12;
 
-const FIREBASE_ERROR_MESSAGES: Record<string, string> = {
-  "auth/invalid-credential": "Credenciales inválidas. Verifica tu email y contraseña.",
-  "auth/user-not-found": "No existe una cuenta con este email.",
-  "auth/wrong-password": "Contraseña incorrecta.",
-  "auth/too-many-requests": "Demasiados intentos. Intenta de nuevo más tarde.",
-  "auth/email-already-in-use": "Ya existe una cuenta con este email.",
-  "auth/weak-password": "La contraseña es demasiado débil.",
-  "auth/popup-closed-by-user": "Ventana de Google cerrada antes de completar el inicio de sesión.",
-  "auth/network-request-failed": "Error de red. Verifica tu conexión.",
-};
+const profileSchema = z.object({
+  displayName: z.string().min(2).max(100).optional(),
+  photoUrl: z.string().max(2048).nullable().optional(),
+});
 
-function toActionError(error: unknown, fallback: string): string {
-  if (typeof error === "object" && error !== null && "code" in error) {
-    const code = (error as { code: string }).code;
-    return FIREBASE_ERROR_MESSAGES[code] ?? fallback;
-  }
-  return fallback;
-}
-
-async function createRemoteSession(idToken: string): Promise<void> {
-  const response = await fetch(SESSION_ENDPOINT, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ token: idToken }),
-  });
-
-  if (!response.ok) {
-    throw new Error("No se pudo crear la sesión");
-  }
-}
-
-async function destroyRemoteSession(): Promise<void> {
-  await fetch(SESSION_ENDPOINT, { method: "DELETE" });
-}
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: z.string().min(6, "La contraseña debe tener al menos 6 caracteres"),
+});
 
 export async function login(
   email: string,
   password: string
 ): Promise<ActionResult<void>> {
+  const parsed = loginSchema.safeParse({ email, password });
+  if (!parsed.success) {
+    return { success: false, error: "Email o contraseña inválidos" };
+  }
+
+  let authenticated = false;
+
   try {
-    const { user } = await signInWithEmailAndPassword(auth, email, password);
-    const idToken = await user.getIdToken();
-    await createRemoteSession(idToken);
-    window.location.href = "/dashboard";
-    return { success: true, data: undefined };
+    const rows = await db
+      .select({ id: users.id, passwordHash: users.passwordHash })
+      .from(users)
+      .where(eq(users.email, parsed.data.email.toLowerCase()))
+      .limit(1);
+
+    const user = rows[0];
+
+    if (user?.passwordHash) {
+      authenticated = await compare(parsed.data.password, user.passwordHash);
+    }
+
+    if (!authenticated) {
+      return {
+        success: false,
+        error: "Credenciales inválidas. Verifica tu email y contraseña.",
+      };
+    }
+
+    await createUserSession(user!.id);
   } catch (error) {
+    console.error("Error logging in:", error);
     return {
       success: false,
-      error: toActionError(error, "No se pudo iniciar sesión. Intenta de nuevo."),
+      error: "No se pudo iniciar sesión. Intenta de nuevo.",
     };
   }
+
+  redirect("/dashboard");
 }
 
 export async function register(
@@ -74,41 +75,55 @@ export async function register(
   email: string,
   password: string
 ): Promise<ActionResult<void>> {
+  const parsed = registerSchema.safeParse({
+    displayName,
+    email,
+    password,
+    confirmPassword: password,
+  });
+  if (!parsed.success) {
+    return { success: false, error: "Datos de registro inválidos" };
+  }
+
   try {
-    const { user } = await createUserWithEmailAndPassword(auth, email, password);
-    await firebaseUpdateProfile(user, { displayName });
-    const idToken = await user.getIdToken(true);
-    await createRemoteSession(idToken);
-    window.location.href = "/dashboard";
-    return { success: true, data: undefined };
+    const normalizedEmail = parsed.data.email.toLowerCase();
+
+    const existing = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.email, normalizedEmail))
+      .limit(1);
+
+    if (existing.length > 0) {
+      return { success: false, error: "Ya existe una cuenta con este email." };
+    }
+
+    const passwordHash = await hash(parsed.data.password, BCRYPT_ROUNDS);
+
+    const inserted = await db
+      .insert(users)
+      .values({
+        email: normalizedEmail,
+        displayName: parsed.data.displayName,
+        passwordHash,
+      })
+      .returning({ id: users.id });
+
+    await createUserSession(inserted[0]!.id);
   } catch (error) {
+    console.error("Error registering:", error);
     return {
       success: false,
-      error: toActionError(error, "No se pudo crear la cuenta. Intenta de nuevo."),
+      error: "No se pudo crear la cuenta. Intenta de nuevo.",
     };
   }
+
+  redirect("/dashboard");
 }
 
 export async function logout(): Promise<void> {
-  await signOut(auth);
-  await destroyRemoteSession();
-  window.location.href = "/login";
-}
-
-export async function signInWithGoogle(): Promise<ActionResult<void>> {
-  try {
-    const provider = new GoogleAuthProvider();
-    const { user } = await signInWithPopup(auth, provider);
-    const idToken = await user.getIdToken();
-    await createRemoteSession(idToken);
-    window.location.href = "/dashboard";
-    return { success: true, data: undefined };
-  } catch (error) {
-    return {
-      success: false,
-      error: toActionError(error, "No se pudo iniciar sesión con Google."),
-    };
-  }
+  await destroyCurrentSession();
+  redirect("/login");
 }
 
 export async function updateUserProfile(data: {
@@ -116,22 +131,30 @@ export async function updateUserProfile(data: {
   photoUrl?: string;
 }): Promise<ActionResult<void>> {
   try {
-    const user = auth.currentUser;
-    if (!user) return { success: false, error: "No hay sesión activa" };
+    const session = await requireSession();
 
-    await firebaseUpdateProfile(user, {
-      ...(data.displayName !== undefined && { displayName: data.displayName }),
-      ...(data.photoUrl !== undefined && { photoURL: data.photoUrl || null }),
-    });
+    const parsed = profileSchema.safeParse(data);
+    if (!parsed.success) {
+      return { success: false, error: "Datos de perfil inválidos" };
+    }
 
-    const idToken = await user.getIdToken(true);
-    await createRemoteSession(idToken);
+    await db
+      .update(users)
+      .set({
+        ...(parsed.data.displayName !== undefined && {
+          displayName: parsed.data.displayName,
+        }),
+        ...(parsed.data.photoUrl !== undefined && {
+          photoUrl: parsed.data.photoUrl || null,
+        }),
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, session.uid));
+
     return { success: true, data: undefined };
   } catch (error) {
-    return {
-      success: false,
-      error: toActionError(error, "No se pudo actualizar el perfil."),
-    };
+    console.error("Error updating profile:", error);
+    return { success: false, error: "No se pudo actualizar el perfil." };
   }
 }
 
@@ -140,22 +163,44 @@ export async function changePassword(data: {
   newPassword: string;
 }): Promise<ActionResult<void>> {
   try {
-    const user = auth.currentUser;
-    if (!user || !user.email)
-      return { success: false, error: "No hay sesión activa" };
+    const session = await requireSession();
 
-    const credential = EmailAuthProvider.credential(
-      user.email,
-      data.currentPassword
+    const parsed = changePasswordSchema.safeParse(data);
+    if (!parsed.success) {
+      return { success: false, error: "La nueva contraseña es demasiado débil." };
+    }
+
+    const rows = await db
+      .select({ passwordHash: users.passwordHash })
+      .from(users)
+      .where(eq(users.id, session.uid))
+      .limit(1);
+
+    const user = rows[0];
+
+    if (!user?.passwordHash) {
+      return { success: false, error: "No hay sesión activa" };
+    }
+
+    const valid = await compare(
+      parsed.data.currentPassword,
+      user.passwordHash
     );
-    await reauthenticateWithCredential(user, credential);
-    await firebaseUpdatePassword(user, data.newPassword);
+
+    if (!valid) {
+      return { success: false, error: "La contraseña actual es incorrecta." };
+    }
+
+    const newPasswordHash = await hash(parsed.data.newPassword, BCRYPT_ROUNDS);
+
+    await db
+      .update(users)
+      .set({ passwordHash: newPasswordHash, updatedAt: new Date() })
+      .where(eq(users.id, session.uid));
 
     return { success: true, data: undefined };
   } catch (error) {
-    return {
-      success: false,
-      error: toActionError(error, "No se pudo cambiar la contraseña."),
-    };
+    console.error("Error changing password:", error);
+    return { success: false, error: "No se pudo cambiar la contraseña." };
   }
 }

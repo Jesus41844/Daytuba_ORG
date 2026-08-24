@@ -32,4 +32,6 @@ export function getDb() {
 
 export const db = getDb().db;
 
+export const client = getDb().client;
+
 export { schema };
