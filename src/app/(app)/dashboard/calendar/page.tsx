@@ -1,0 +1,29 @@
+import type { Metadata } from "next";
+import { redirect } from "next/navigation";
+
+import { getSession } from "@/lib/auth/session";
+import { getTasksForCalendar } from "@/features/tasks/queries";
+import { getUserSchedule } from "@/features/schedule/actions";
+import { getUserEvents } from "@/features/events/actions";
+import { CalendarView } from "@/features/tasks/components/calendar-view";
+
+export const metadata: Metadata = {
+  title: "Calendario | Daytuba Tasks",
+};
+
+export default async function CalendarPage() {
+  const session = await getSession();
+  if (!session) redirect("/login");
+
+  const [tasks, scheduleBlocks, events] = await Promise.all([
+    getTasksForCalendar(),
+    getUserSchedule(),
+    getUserEvents(),
+  ]);
+
+  return (
+    <div className="flex flex-col h-full min-h-0">
+      <CalendarView tasks={tasks} scheduleBlocks={scheduleBlocks} events={events} />
+    </div>
+  );
+}
