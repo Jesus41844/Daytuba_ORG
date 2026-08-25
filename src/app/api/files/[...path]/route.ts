@@ -16,6 +16,14 @@ function uploadsRoot(): string {
   return path.resolve(configured);
 }
 
+const MIME_BY_EXT: Record<string, string> = {
+  ".pdf": "application/pdf",
+  ".webp": "image/webp",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+};
+
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ path: string[] }> }
@@ -27,14 +35,64 @@ export async function GET(
 
   const { path: segments } = await params;
 
-  if (!segments || segments.length < 3) {
+  if (!segments || segments.length < 2) {
     return NextResponse.json({ error: "Ruta inválida" }, { status: 400 });
   }
 
-  const [kind, ownerId] = segments;
+  const kind = segments[0];
+
+  // Profiles: /api/files/profiles/{userId} — user can only access their own
+  if (kind === "profiles") {
+    const userId = segments[1];
+    if (userId !== session.uid) {
+      return NextResponse.json({ error: "No autorizado" }, { status: 403 });
+    }
+
+    const root = uploadsRoot();
+    const profileDir = path.join(root, "profiles");
+
+    try {
+      const { readdirSync } = await import("node:fs");
+      const files = readdirSync(profileDir);
+      const match = files.find((f) => {
+        const ext = path.extname(f);
+        return path.basename(f, ext) === userId;
+      });
+
+      if (!match) {
+        return NextResponse.json({ error: "Foto no encontrada" }, { status: 404 });
+      }
+
+      const absolutePath = path.join(profileDir, match);
+      const ext = path.extname(match).toLowerCase();
+      const contentType = MIME_BY_EXT[ext] ?? "application/octet-stream";
+
+      const stats = await stat(absolutePath);
+      const stream = Readable.toWeb(
+        createReadStream(absolutePath)
+      ) as unknown as ReadableStream;
+
+      return new NextResponse(stream, {
+        status: 200,
+        headers: {
+          "Content-Type": contentType,
+          "Content-Length": String(stats.size),
+          "Cache-Control": "private, max-age=86400",
+        },
+      });
+    } catch {
+      return NextResponse.json({ error: "Foto no encontrada" }, { status: 404 });
+    }
+  }
+
+  // Tasks / Schedule: /api/files/{kind}/{ownerId}/{...fileName}
+  if (segments.length < 3) {
+    return NextResponse.json({ error: "Ruta inválida" }, { status: 400 });
+  }
+
+  const ownerId = segments[1];
   const fileName = segments.slice(2).join("/");
 
-  // Ownership check against the database
   try {
     if (kind === "tasks") {
       const rows = await db
@@ -75,6 +133,9 @@ export async function GET(
     return NextResponse.json({ error: "Archivo no encontrado" }, { status: 404 });
   }
 
+  const ext = path.extname(fileName).toLowerCase();
+  const contentType = MIME_BY_EXT[ext] ?? "application/octet-stream";
+
   const stats = await stat(absolutePath);
   const stream = Readable.toWeb(
     createReadStream(absolutePath)
@@ -83,7 +144,7 @@ export async function GET(
   return new NextResponse(stream, {
     status: 200,
     headers: {
-      "Content-Type": "application/pdf",
+      "Content-Type": contentType,
       "Content-Length": String(stats.size),
       "Content-Disposition": `inline; filename="${path.basename(fileName)}"`,
       "Cache-Control": "private, no-store",

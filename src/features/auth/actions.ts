@@ -1,8 +1,12 @@
 "use server";
 
 import { compare, hash } from "bcryptjs";
+import { mkdir, readdir, unlink } from "node:fs/promises";
+import path from "node:path";
 import { eq } from "drizzle-orm";
+import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import sharp from "sharp";
 import { z } from "zod";
 
 import { db } from "@/db";
@@ -16,6 +20,9 @@ import type { ActionResult } from "@/lib/errors";
 import { loginSchema, registerSchema } from "@/lib/validations";
 
 const BCRYPT_ROUNDS = 12;
+const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
+const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5 MB
+const PHOTO_SIZE = 256;
 
 const profileSchema = z.object({
   displayName: z.string().min(2).max(100).optional(),
@@ -26,6 +33,32 @@ const changePasswordSchema = z.object({
   currentPassword: z.string().min(1),
   newPassword: z.string().min(6, "La contraseña debe tener al menos 6 caracteres"),
 });
+
+function uploadsRoot(): string {
+  const configured = process.env.UPLOADS_DIR;
+  if (!configured) throw new Error("UPLOADS_DIR no está configurada");
+  return path.resolve(configured);
+}
+
+function profilesDir(): string {
+  return path.resolve(uploadsRoot(), "profiles");
+}
+
+async function removeExistingPhoto(userId: string): Promise<void> {
+  const dir = profilesDir();
+  try {
+    const files = await readdir(dir);
+    for (const file of files) {
+      const ext = path.extname(file);
+      const base = path.basename(file, ext);
+      if (base === userId) {
+        await unlink(path.join(dir, file)).catch(() => {});
+      }
+    }
+  } catch {
+    // directory may not exist yet
+  }
+}
 
 export async function login(
   email: string,
@@ -202,5 +235,76 @@ export async function changePassword(data: {
   } catch (error) {
     console.error("Error changing password:", error);
     return { success: false, error: "No se pudo cambiar la contraseña." };
+  }
+}
+
+export async function uploadProfilePhoto(
+  file: File
+): Promise<ActionResult<{ photoUrl: string }>> {
+  try {
+    const session = await requireSession();
+
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+      return {
+        success: false,
+        error: "Formato no soportado. Usa JPEG, PNG o WebP.",
+      };
+    }
+
+    if (file.size > MAX_IMAGE_SIZE) {
+      return {
+        success: false,
+        error: "La imagen no puede superar 5 MB.",
+      };
+    }
+
+    const dir = profilesDir();
+    await mkdir(dir, { recursive: true });
+
+    const buffer = Buffer.from(await file.arrayBuffer());
+
+    const ext = file.type === "image/png" ? "png" : "webp";
+    const fileName = `${session.uid}.${ext}`;
+    const filePath = path.join(dir, fileName);
+
+    await removeExistingPhoto(session.uid);
+
+    await sharp(buffer)
+      .resize(PHOTO_SIZE, PHOTO_SIZE, { fit: "cover", position: "centre" })
+      .toFile(filePath);
+
+    const photoUrl = `/api/files/profiles/${session.uid}`;
+
+    await db
+      .update(users)
+      .set({ photoUrl, updatedAt: new Date() })
+      .where(eq(users.id, session.uid));
+
+    revalidatePath("/(app)", "layout");
+
+    return { success: true, data: { photoUrl } };
+  } catch (error) {
+    console.error("Error uploading profile photo:", error);
+    return { success: false, error: "No se pudo subir la foto." };
+  }
+}
+
+export async function deleteProfilePhoto(): Promise<ActionResult<void>> {
+  try {
+    const session = await requireSession();
+
+    await removeExistingPhoto(session.uid);
+
+    await db
+      .update(users)
+      .set({ photoUrl: null, updatedAt: new Date() })
+      .where(eq(users.id, session.uid));
+
+    revalidatePath("/(app)", "layout");
+
+    return { success: true, data: undefined };
+  } catch (error) {
+    console.error("Error deleting profile photo:", error);
+    return { success: false, error: "No se pudo borrar la foto." };
   }
 }
