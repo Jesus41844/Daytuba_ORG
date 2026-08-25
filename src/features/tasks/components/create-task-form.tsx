@@ -52,7 +52,6 @@ export function CreateTaskForm({
     defaultValues: {
       title: "",
       priority: "medium",
-      projectId: "",
       recurrence: "none",
     },
   });
