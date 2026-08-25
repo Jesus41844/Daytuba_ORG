@@ -10,7 +10,9 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest",
     "test:run": "vitest run",
-    "emulators": "firebase emulators:start --only auth,firestore"
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
@@ -20,8 +22,6 @@
     "clsx": "^2.1.1",
     "date-fns": "^4.4.0",
     "drizzle-orm": "^0.45.2",
-    "firebase": "^12.18.0",
-    "firebase-admin": "^14.3.0",
     "lucide-react": "^1.33.0",
     "next": "^16.3.1",
     "pdfjs-dist": "^6.2.108",
@@ -47,7 +47,6 @@
     "drizzle-kit": "^0.31.10",
     "eslint": "^9.39.5",
     "eslint-config-next": "^16.3.1",
-    "firebase-tools": "^14.3.0",
     "jsdom": "^30.0.1",
     "prettier": "^3.9.6",
     "shadcn": "^4.18.0",
