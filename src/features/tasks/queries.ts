@@ -1,8 +1,10 @@
 "use server";
 
-import type { Query } from "firebase-admin/firestore";
-import { getDb } from "@/lib/db/server";
-import { mapTask } from "@/lib/firebase/mappers";
+import { and, asc, desc, eq, gt, lt, notInArray } from "drizzle-orm";
+
+import { db } from "@/db";
+import { mapTask } from "@/db/mappers";
+import { tasks } from "@/db/schema";
 import type { Task } from "@/types";
 import { requireSession } from "@/lib/auth/session";
 
@@ -17,87 +19,98 @@ export async function getUserTasks(
   filters?: TaskFilters
 ): Promise<Task[]> {
   const session = await requireSession();
-  const db = await getDb();
 
-  let tasksQuery: Query = db
-    .collection("tasks")
-    .where("userId", "==", session.uid)
-    .where("isArchived", "==", false);
+  const conditions = [
+    eq(tasks.userId, session.uid),
+    eq(tasks.isArchived, false),
+  ];
 
   if (filters?.projectId) {
-    tasksQuery = tasksQuery.where("projectId", "==", filters.projectId);
+    conditions.push(eq(tasks.projectId, filters.projectId));
   }
   if (filters?.status) {
-    tasksQuery = tasksQuery.where("status", "==", filters.status);
+    conditions.push(eq(tasks.status, filters.status));
   }
   if (filters?.priority) {
-    tasksQuery = tasksQuery.where("priority", "==", filters.priority);
+    conditions.push(eq(tasks.priority, filters.priority));
   }
 
-  tasksQuery = tasksQuery
-    .orderBy("sortOrder", "asc")
-    .orderBy("createdAt", "desc");
-
-  const snapshot = await tasksQuery.get();
-  let tasks = snapshot.docs.map(mapTask);
+  let rows = await db
+    .select()
+    .from(tasks)
+    .where(and(...conditions))
+    .orderBy(asc(tasks.sortOrder), desc(tasks.createdAt));
 
   if (filters?.categoryId) {
-    tasks = tasks.filter((t) => t.categories.includes(filters.categoryId!));
+    rows = rows.filter((t) => t.categories.includes(filters.categoryId!));
   }
 
-  return tasks;
+  return rows.map(mapTask);
 }
 
 export async function getTaskById(taskId: string): Promise<Task | null> {
   const session = await requireSession();
-  const db = await getDb();
 
-  const snapshot = await db.collection("tasks").doc(taskId).get();
-  if (!snapshot.exists) return null;
-  if (snapshot.get("userId") !== session.uid) return null;
-  return mapTask(snapshot);
+  const rows = await db
+    .select()
+    .from(tasks)
+    .where(eq(tasks.id, taskId))
+    .limit(1);
+
+  const row = rows[0];
+  if (!row || row.userId !== session.uid) return null;
+  return mapTask(row);
 }
 
 export async function getOverdueTasks(): Promise<Task[]> {
   const session = await requireSession();
-  const db = await getDb();
+  const now = new Date();
 
-  const now = new Date().toISOString();
+  const rows = await db
+    .select()
+    .from(tasks)
+    .where(
+      and(
+        eq(tasks.userId, session.uid),
+        eq(tasks.isArchived, false),
+        lt(tasks.dueDate, now),
+        notInArray(tasks.status, ["completed", "cancelled"])
+      )
+    )
+    .orderBy(asc(tasks.dueDate));
 
-  const snapshot = await db
-    .collection("tasks")
-    .where("userId", "==", session.uid)
-    .where("isArchived", "==", false)
-    .where("dueDate", "<", now)
-    .where("status", "not-in", ["completed", "cancelled"])
-    .orderBy("dueDate", "asc")
-    .get();
-  return snapshot.docs.map(mapTask);
+  return rows.map(mapTask);
 }
 
 export async function getArchivedTasks(): Promise<Task[]> {
   const session = await requireSession();
-  const db = await getDb();
 
-  const snapshot = await db
-    .collection("tasks")
-    .where("userId", "==", session.uid)
-    .where("isArchived", "==", true)
-    .orderBy("updatedAt", "desc")
-    .get();
-  return snapshot.docs.map(mapTask);
+  const rows = await db
+    .select()
+    .from(tasks)
+    .where(
+      and(eq(tasks.userId, session.uid), eq(tasks.isArchived, true))
+    )
+    .orderBy(desc(tasks.updatedAt));
+
+  return rows.map(mapTask);
 }
 
 export async function getTasksForCalendar(): Promise<Task[]> {
   const session = await requireSession();
-  const db = await getDb();
 
-  const snapshot = await db
-    .collection("tasks")
-    .where("userId", "==", session.uid)
-    .where("isArchived", "==", false)
-    .get();
-  return snapshot.docs
+  const rows = await db
+    .select()
+    .from(tasks)
+    .where(
+      and(
+        eq(tasks.userId, session.uid),
+        eq(tasks.isArchived, false),
+        gt(tasks.dueDate, new Date(0))
+      )
+    );
+
+  return rows
     .map(mapTask)
     .filter((task) => task.dueDate != null)
     .sort((a, b) => (a.dueDate ?? "").localeCompare(b.dueDate ?? ""));

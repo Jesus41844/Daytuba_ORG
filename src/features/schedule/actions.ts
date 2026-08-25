@@ -1,8 +1,10 @@
 "use server";
 
+import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { FieldValue } from "firebase-admin/firestore";
-import { getDb } from "@/lib/db/server";
+
+import { db } from "@/db";
+import { scheduleBlocks } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import type { ActionResult } from "@/lib/errors";
 import type { ScheduleBlock } from "./types";
@@ -11,36 +13,32 @@ import {
   type ParsedScheduleEntry,
 } from "@/lib/schedule-pdf";
 
-function mapScheduleBlock(doc: FirebaseFirestore.DocumentSnapshot): ScheduleBlock {
-  const data = doc.data() ?? {};
+function mapScheduleBlock(
+  row: typeof scheduleBlocks.$inferSelect
+): ScheduleBlock {
   return {
-    id: doc.id,
-    userId: (data.userId as string) ?? "",
-    name: (data.name as string) ?? "",
-    dayOfWeek: (data.dayOfWeek as number) ?? 0,
-    startTime: (data.startTime as string) ?? "",
-    endTime: (data.endTime as string) ?? "",
-    color: (data.color as string) ?? "#0b57d0",
-    pdfUrl: (data.pdfUrl as string) ?? null,
-    pdfName: (data.pdfName as string) ?? null,
-    createdAt: data.createdAt instanceof Date
-      ? data.createdAt.toISOString()
-      : typeof data.createdAt === "string"
-        ? data.createdAt
-        : new Date().toISOString(),
+    id: row.id,
+    userId: row.userId,
+    name: row.name,
+    dayOfWeek: row.dayOfWeek,
+    startTime: row.startTime,
+    endTime: row.endTime,
+    color: row.color,
+    pdfUrl: row.pdfUrl,
+    pdfName: row.pdfName,
+    createdAt: row.createdAt.toISOString(),
   };
 }
 
 export async function getUserSchedule(): Promise<ScheduleBlock[]> {
   const session = await requireSession();
-  const db = await getDb();
 
-  const snapshot = await db
-    .collection("schedule_blocks")
-    .where("userId", "==", session.uid)
-    .get();
+  const rows = await db
+    .select()
+    .from(scheduleBlocks)
+    .where(eq(scheduleBlocks.userId, session.uid));
 
-  return snapshot.docs.map(mapScheduleBlock);
+  return rows.map(mapScheduleBlock);
 }
 
 export async function createScheduleBlock(
@@ -48,29 +46,25 @@ export async function createScheduleBlock(
 ): Promise<ActionResult<ScheduleBlock>> {
   try {
     const session = await requireSession();
-    const db = await getDb();
 
-    const ref = db.collection("schedule_blocks").doc();
-    const now = new Date().toISOString();
-
-    const block: ScheduleBlock = {
-      id: ref.id,
-      userId: session.uid,
-      ...data,
-      pdfUrl: data.pdfUrl ?? null,
-      pdfName: data.pdfName ?? null,
-      createdAt: now,
-    };
-
-    await ref.set({
-      ...block,
-      createdAt: FieldValue.serverTimestamp(),
-    });
+    const inserted = await db
+      .insert(scheduleBlocks)
+      .values({
+        userId: session.uid,
+        name: data.name,
+        dayOfWeek: data.dayOfWeek,
+        startTime: data.startTime,
+        endTime: data.endTime,
+        color: data.color ?? "#0b57d0",
+        pdfUrl: data.pdfUrl ?? null,
+        pdfName: data.pdfName ?? null,
+      })
+      .returning();
 
     revalidatePath("/dashboard/schedule");
     revalidatePath("/dashboard/calendar");
 
-    return { success: true, data: block };
+    return { success: true, data: mapScheduleBlock(inserted[0]!) };
   } catch (error) {
     console.error("Error creating schedule block:", error);
     return { success: false, error: "Error al crear el bloque de horario" };
@@ -83,27 +77,34 @@ export async function updateScheduleBlock(
 ): Promise<ActionResult<ScheduleBlock>> {
   try {
     const session = await requireSession();
-    const db = await getDb();
 
-    const doc = await db.collection("schedule_blocks").doc(id).get();
-    if (!doc.exists) {
-      return { success: false, error: "Bloque no encontrado" };
-    }
-    if (doc.get("userId") !== session.uid) {
+    const rows = await db
+      .select()
+      .from(scheduleBlocks)
+      .where(eq(scheduleBlocks.id, id))
+      .limit(1);
+
+    if (!rows[0]) return { success: false, error: "Bloque no encontrado" };
+    if (rows[0].userId !== session.uid)
       return { success: false, error: "No autorizado" };
-    }
 
-    await doc.ref.update({
-      ...data,
-      updatedAt: FieldValue.serverTimestamp(),
-    });
-
-    const updated = await doc.ref.get();
+    const updated = await db
+      .update(scheduleBlocks)
+      .set({
+        ...(data.name !== undefined && { name: data.name }),
+        ...(data.dayOfWeek !== undefined && { dayOfWeek: data.dayOfWeek }),
+        ...(data.startTime !== undefined && { startTime: data.startTime }),
+        ...(data.endTime !== undefined && { endTime: data.endTime }),
+        ...(data.color !== undefined && { color: data.color }),
+        updatedAt: new Date(),
+      })
+      .where(eq(scheduleBlocks.id, id))
+      .returning();
 
     revalidatePath("/dashboard/schedule");
     revalidatePath("/dashboard/calendar");
 
-    return { success: true, data: mapScheduleBlock(updated) };
+    return { success: true, data: mapScheduleBlock(updated[0]!) };
   } catch (error) {
     console.error("Error updating schedule block:", error);
     return { success: false, error: "Error al actualizar el bloque" };
@@ -113,17 +114,18 @@ export async function updateScheduleBlock(
 export async function deleteScheduleBlock(id: string): Promise<ActionResult> {
   try {
     const session = await requireSession();
-    const db = await getDb();
 
-    const doc = await db.collection("schedule_blocks").doc(id).get();
-    if (!doc.exists) {
-      return { success: false, error: "Bloque no encontrado" };
-    }
-    if (doc.get("userId") !== session.uid) {
+    const rows = await db
+      .select({ userId: scheduleBlocks.userId })
+      .from(scheduleBlocks)
+      .where(eq(scheduleBlocks.id, id))
+      .limit(1);
+
+    if (!rows[0]) return { success: false, error: "Bloque no encontrado" };
+    if (rows[0].userId !== session.uid)
       return { success: false, error: "No autorizado" };
-    }
 
-    await doc.ref.delete();
+    await db.delete(scheduleBlocks).where(eq(scheduleBlocks.id, id));
 
     revalidatePath("/dashboard/schedule");
     revalidatePath("/dashboard/calendar");

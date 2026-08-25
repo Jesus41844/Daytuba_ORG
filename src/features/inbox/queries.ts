@@ -1,7 +1,10 @@
 "use server";
 
-import { getDb } from "@/lib/db/server";
-import { mapTask } from "@/lib/firebase/mappers";
+import { and, eq } from "drizzle-orm";
+
+import { db } from "@/db";
+import { mapTask } from "@/db/mappers";
+import { tasks } from "@/db/schema";
 import type { Task } from "@/types";
 import { requireSession } from "@/lib/auth/session";
 
@@ -16,21 +19,19 @@ const PRIORITY_RANK: Record<Task["priority"], number> = {
 
 export async function getInbox(): Promise<InboxTask[]> {
   const session = await requireSession();
-  const db = await getDb();
 
-  const snapshot = await db
-    .collection("tasks")
-    .where("userId", "==", session.uid)
-    .where("isArchived", "==", false)
-    .get();
-
-  const tasks = snapshot.docs
-    .map(mapTask)
-    .filter(
-      (task) => task.status !== "completed" && task.status !== "cancelled"
+  const rows = await db
+    .select()
+    .from(tasks)
+    .where(
+      and(eq(tasks.userId, session.uid), eq(tasks.isArchived, false))
     );
 
-  tasks.sort((a, b) => {
+  const inboxTasks = rows.map(mapTask).filter(
+    (task) => task.status !== "completed" && task.status !== "cancelled"
+  );
+
+  inboxTasks.sort((a, b) => {
     if (a.dueDate && b.dueDate && a.dueDate !== b.dueDate) {
       return a.dueDate < b.dueDate ? -1 : 1;
     }
@@ -41,5 +42,5 @@ export async function getInbox(): Promise<InboxTask[]> {
     return a.createdAt > b.createdAt ? -1 : 1;
   });
 
-  return tasks;
+  return inboxTasks;
 }

@@ -1,10 +1,38 @@
 "use server";
 
-import { getStorage } from "firebase-admin/storage";
-import { getDb } from "@/lib/db/server";
-import { requireSession } from "@/lib/auth/session";
+import { randomUUID } from "node:crypto";
+import { mkdir, unlink, writeFile } from "node:fs/promises";
+import path from "node:path";
+
+import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+
+import { db } from "@/db";
+import { scheduleBlocks, tasks } from "@/db/schema";
+import { requireSession } from "@/lib/auth/session";
 import type { ActionResult } from "@/lib/errors";
+
+const MAX_SIZE_BYTES = 10 * 1024 * 1024;
+
+function uploadsRoot(): string {
+  const configured = process.env.UPLOADS_DIR;
+  if (!configured) {
+    throw new Error("UPLOADS_DIR no está configurada");
+  }
+  return path.resolve(configured);
+}
+
+function safeSegment(value: string): string {
+  return value.replace(/[^a-zA-Z0-9._-]/g, "_");
+}
+
+async function removeStoredFile(pdfUrl: string | null): Promise<void> {
+  if (!pdfUrl || !pdfUrl.startsWith("/api/files/")) return;
+  const relative = pdfUrl.slice("/api/files/".length);
+  const target = path.resolve(uploadsRoot(), relative);
+  if (!target.startsWith(uploadsRoot() + path.sep)) return;
+  await unlink(target).catch(() => {});
+}
 
 export async function uploadTaskPdf(
   taskId: string,
@@ -12,53 +40,48 @@ export async function uploadTaskPdf(
 ): Promise<ActionResult<{ url: string; name: string }>> {
   try {
     const session = await requireSession();
-    const db = await getDb();
 
-    const taskDoc = await db.collection("tasks").doc(taskId).get();
-    if (!taskDoc.exists) {
-      return { success: false, error: "La tarea no existe" };
-    }
-    if (taskDoc.get("userId") !== session.uid) {
+    const taskRows = await db
+      .select({ userId: tasks.userId })
+      .from(tasks)
+      .where(eq(tasks.id, taskId))
+      .limit(1);
+
+    if (!taskRows[0]) return { success: false, error: "La tarea no existe" };
+    if (taskRows[0].userId !== session.uid)
       return { success: false, error: "No autorizado" };
-    }
 
-    const allowedTypes = ["application/pdf"];
-    if (!allowedTypes.includes(file.type)) {
+    if (file.type !== "application/pdf") {
       return { success: false, error: "Solo se permiten archivos PDF" };
     }
-
-    const maxSize = 10 * 1024 * 1024;
-    if (file.size > maxSize) {
+    if (file.size > MAX_SIZE_BYTES) {
       return { success: false, error: "El archivo no puede superar 10MB" };
     }
 
-    const storage = getStorage();
-    const bucket = storage.bucket();
-    const fileName = `${session.uid}/${taskId}/${Date.now()}_${file.name}`;
-    const fileRef = bucket.file(fileName);
+    const storedName = `${Date.now()}_${safeSegment(file.name)}`;
+    const relativeKey = path.posix.join(
+      "tasks",
+      taskId,
+      `${randomUUID()}_${storedName}`
+    );
+    const absolutePath = path.join(uploadsRoot(), relativeKey);
 
-    const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+    await mkdir(path.dirname(absolutePath), { recursive: true });
+    await writeFile(absolutePath, Buffer.from(await file.arrayBuffer()));
 
-    await fileRef.save(buffer, {
-      contentType: "application/pdf",
-      metadata: {
-        customMetadata: {
-          taskId,
-          userId: session.uid,
-          originalName: file.name,
-        },
-      },
-    });
+    const url = `/api/files/${relativeKey}`;
 
-    await fileRef.makePublic();
-    const url = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
+    const oldRows = await db
+      .select({ pdfUrl: tasks.pdfUrl })
+      .from(tasks)
+      .where(eq(tasks.id, taskId))
+      .limit(1);
+    await removeStoredFile(oldRows[0]?.pdfUrl ?? null);
 
-    await db.collection("tasks").doc(taskId).update({
-      pdfUrl: url,
-      pdfName: file.name,
-      updatedAt: new Date(),
-    });
+    await db
+      .update(tasks)
+      .set({ pdfUrl: url, pdfName: file.name, updatedAt: new Date() })
+      .where(eq(tasks.id, taskId));
 
     revalidatePath("/dashboard/tasks");
     revalidatePath(`/dashboard/tasks/${taskId}`);
@@ -70,40 +93,28 @@ export async function uploadTaskPdf(
   }
 }
 
-export async function deleteTaskPdf(
-  taskId: string
-): Promise<ActionResult> {
+export async function deleteTaskPdf(taskId: string): Promise<ActionResult> {
   try {
     const session = await requireSession();
-    const db = await getDb();
 
-    const taskDoc = await db.collection("tasks").doc(taskId).get();
-    if (!taskDoc.exists) {
-      return { success: false, error: "La tarea no existe" };
-    }
-    if (taskDoc.get("userId") !== session.uid) {
+    const rows = await db
+      .select({ userId: tasks.userId, pdfUrl: tasks.pdfUrl })
+      .from(tasks)
+      .where(eq(tasks.id, taskId))
+      .limit(1);
+
+    if (!rows[0]) return { success: false, error: "La tarea no existe" };
+    if (rows[0].userId !== session.uid)
       return { success: false, error: "No autorizado" };
-    }
-
-    const currentPdfUrl = taskDoc.get("pdfUrl");
-    if (!currentPdfUrl) {
+    if (!rows[0].pdfUrl)
       return { success: false, error: "No hay PDF para eliminar" };
-    }
 
-    const storage = getStorage();
-    const bucket = storage.bucket();
+    await removeStoredFile(rows[0].pdfUrl);
 
-    const urlParts = currentPdfUrl.split(`/${bucket.name}/`);
-    if (urlParts.length > 1) {
-      const filePath = decodeURIComponent(urlParts[1]);
-      await bucket.file(filePath).delete().catch(() => {});
-    }
-
-    await db.collection("tasks").doc(taskId).update({
-      pdfUrl: null,
-      pdfName: null,
-      updatedAt: new Date(),
-    });
+    await db
+      .update(tasks)
+      .set({ pdfUrl: null, pdfName: null, updatedAt: new Date() })
+      .where(eq(tasks.id, taskId));
 
     revalidatePath("/dashboard/tasks");
     revalidatePath(`/dashboard/tasks/${taskId}`);
@@ -121,52 +132,44 @@ export async function uploadScheduleBlockPdf(
 ): Promise<ActionResult<{ url: string; name: string }>> {
   try {
     const session = await requireSession();
-    const db = await getDb();
 
-    const blockDoc = await db.collection("schedule_blocks").doc(blockId).get();
-    if (!blockDoc.exists) {
-      return { success: false, error: "El bloque no existe" };
-    }
-    if (blockDoc.get("userId") !== session.uid) {
+    const blockRows = await db
+      .select({ userId: scheduleBlocks.userId })
+      .from(scheduleBlocks)
+      .where(eq(scheduleBlocks.id, blockId))
+      .limit(1);
+
+    if (!blockRows[0]) return { success: false, error: "El bloque no existe" };
+    if (blockRows[0].userId !== session.uid)
       return { success: false, error: "No autorizado" };
-    }
 
-    const allowedTypes = ["application/pdf"];
-    if (!allowedTypes.includes(file.type)) {
+    if (file.type !== "application/pdf") {
       return { success: false, error: "Solo se permiten archivos PDF" };
     }
-
-    const maxSize = 10 * 1024 * 1024;
-    if (file.size > maxSize) {
+    if (file.size > MAX_SIZE_BYTES) {
       return { success: false, error: "El archivo no puede superar 10MB" };
     }
 
-    const storage = getStorage();
-    const bucket = storage.bucket();
-    const fileName = `${session.uid}/schedule/${blockId}/${Date.now()}_${file.name}`;
-    const fileRef = bucket.file(fileName);
+    const storedName = `${Date.now()}_${safeSegment(file.name)}`;
+    const relativeKey = path.posix.join("schedule", blockId, `${randomUUID()}_${storedName}`);
+    const absolutePath = path.join(uploadsRoot(), relativeKey);
 
-    const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+    await mkdir(path.dirname(absolutePath), { recursive: true });
+    await writeFile(absolutePath, Buffer.from(await file.arrayBuffer()));
 
-    await fileRef.save(buffer, {
-      contentType: "application/pdf",
-      metadata: {
-        customMetadata: {
-          blockId,
-          userId: session.uid,
-          originalName: file.name,
-        },
-      },
-    });
+    const url = `/api/files/${relativeKey}`;
 
-    await fileRef.makePublic();
-    const url = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
+    const oldRows = await db
+      .select({ pdfUrl: scheduleBlocks.pdfUrl })
+      .from(scheduleBlocks)
+      .where(eq(scheduleBlocks.id, blockId))
+      .limit(1);
+    await removeStoredFile(oldRows[0]?.pdfUrl ?? null);
 
-    await db.collection("schedule_blocks").doc(blockId).update({
-      pdfUrl: url,
-      pdfName: file.name,
-    });
+    await db
+      .update(scheduleBlocks)
+      .set({ pdfUrl: url, pdfName: file.name })
+      .where(eq(scheduleBlocks.id, blockId));
 
     revalidatePath("/dashboard/calendar");
 
@@ -182,34 +185,25 @@ export async function deleteScheduleBlockPdf(
 ): Promise<ActionResult> {
   try {
     const session = await requireSession();
-    const db = await getDb();
 
-    const blockDoc = await db.collection("schedule_blocks").doc(blockId).get();
-    if (!blockDoc.exists) {
-      return { success: false, error: "El bloque no existe" };
-    }
-    if (blockDoc.get("userId") !== session.uid) {
+    const rows = await db
+      .select({ userId: scheduleBlocks.userId, pdfUrl: scheduleBlocks.pdfUrl })
+      .from(scheduleBlocks)
+      .where(eq(scheduleBlocks.id, blockId))
+      .limit(1);
+
+    if (!rows[0]) return { success: false, error: "El bloque no existe" };
+    if (rows[0].userId !== session.uid)
       return { success: false, error: "No autorizado" };
-    }
-
-    const currentPdfUrl = blockDoc.get("pdfUrl");
-    if (!currentPdfUrl) {
+    if (!rows[0].pdfUrl)
       return { success: false, error: "No hay PDF para eliminar" };
-    }
 
-    const storage = getStorage();
-    const bucket = storage.bucket();
+    await removeStoredFile(rows[0].pdfUrl);
 
-    const urlParts = currentPdfUrl.split(`/${bucket.name}/`);
-    if (urlParts.length > 1) {
-      const filePath = decodeURIComponent(urlParts[1]);
-      await bucket.file(filePath).delete().catch(() => {});
-    }
-
-    await db.collection("schedule_blocks").doc(blockId).update({
-      pdfUrl: null,
-      pdfName: null,
-    });
+    await db
+      .update(scheduleBlocks)
+      .set({ pdfUrl: null, pdfName: null })
+      .where(eq(scheduleBlocks.id, blockId));
 
     revalidatePath("/dashboard/calendar");
 

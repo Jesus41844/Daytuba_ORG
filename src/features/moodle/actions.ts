@@ -1,9 +1,12 @@
 "use server";
 
+import { and, desc, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { FieldValue } from "firebase-admin/firestore";
 import { z } from "zod";
-import { getDb } from "@/lib/db/server";
+
+import { db } from "@/db";
+import { moodleCredentials, projects, tasks } from "@/db/schema";
+import { toDateOrNull } from "@/db/mappers";
 import { requireSession } from "@/lib/auth/session";
 import type { ActionResult } from "@/lib/errors";
 import { AppError, NotFoundError } from "@/lib/errors";
@@ -24,26 +27,19 @@ const credentialSchema = z.object({
   password: z.string().min(1, "La contraseña es requerida"),
 });
 
-function mapCredential(doc: FirebaseFirestore.DocumentSnapshot): MoodleCredentials {
-  const data = doc.data() ?? {};
+function mapCredential(
+  row: typeof moodleCredentials.$inferSelect
+): MoodleCredentials {
   return {
-    id: doc.id,
-    userId: (data.userId as string) ?? "",
-    platform: (data.platform as MoodlePlatform) ?? "ecampus",
-    username: (data.username as string) ?? "",
-    encryptedPassword: (data.encryptedPassword as string) ?? "",
-    iv: (data.iv as string) ?? "",
-    tag: (data.tag as string) ?? "",
-    lastSyncAt: data.lastSyncAt instanceof Date
-      ? data.lastSyncAt.toISOString()
-      : typeof data.lastSyncAt === "string"
-        ? data.lastSyncAt
-        : null,
-    createdAt: data.createdAt instanceof Date
-      ? data.createdAt.toISOString()
-      : typeof data.createdAt === "string"
-        ? data.createdAt
-        : new Date().toISOString(),
+    id: row.id,
+    userId: row.userId,
+    platform: row.platform,
+    username: row.username,
+    encryptedPassword: row.encryptedPassword,
+    iv: row.iv,
+    tag: row.tag,
+    lastSyncAt: row.lastSyncAt ? row.lastSyncAt.toISOString() : null,
+    createdAt: row.createdAt.toISOString(),
   };
 }
 
@@ -63,53 +59,51 @@ export async function saveMoodleCredentials(
     }
 
     const session = await requireSession();
-    const db = await getDb();
 
     const existing = await db
-      .collection("moodle_credentials")
-      .where("userId", "==", session.uid)
-      .where("platform", "==", platform)
-      .get();
+      .select()
+      .from(moodleCredentials)
+      .where(
+        and(
+          eq(moodleCredentials.userId, session.uid),
+          eq(moodleCredentials.platform, platform)
+        )
+      )
+      .limit(1);
 
     const { ciphertext, iv, tag } = encrypt(password);
 
-    if (!existing.empty) {
-      const docRef = existing.docs[0]!.ref;
-      await docRef.update({
+    if (existing[0]) {
+      const updated = await db
+        .update(moodleCredentials)
+        .set({
+          username,
+          encryptedPassword: ciphertext,
+          iv,
+          tag,
+          updatedAt: new Date(),
+        })
+        .where(eq(moodleCredentials.id, existing[0].id))
+        .returning();
+
+      revalidatePath("/dashboard/settings");
+      return { success: true, data: mapCredential(updated[0]!) };
+    }
+
+    const inserted = await db
+      .insert(moodleCredentials)
+      .values({
+        userId: session.uid,
+        platform,
         username,
         encryptedPassword: ciphertext,
         iv,
         tag,
-        updatedAt: FieldValue.serverTimestamp(),
-      });
-
-      const updated = await docRef.get();
-      revalidatePath("/dashboard/settings");
-      return { success: true, data: mapCredential(updated) };
-    }
-
-    const docRef = db.collection("moodle_credentials").doc();
-    const now = new Date().toISOString();
-
-    const cred: MoodleCredentials = {
-      id: docRef.id,
-      userId: session.uid,
-      platform,
-      username,
-      encryptedPassword: ciphertext,
-      iv,
-      tag,
-      lastSyncAt: null,
-      createdAt: now,
-    };
-
-    await docRef.set({
-      ...cred,
-      createdAt: FieldValue.serverTimestamp(),
-    });
+      })
+      .returning();
 
     revalidatePath("/dashboard/settings");
-    return { success: true, data: cred };
+    return { success: true, data: mapCredential(inserted[0]!) };
   } catch (error) {
     console.error("Error saving Moodle credentials:", error);
     return { success: false, error: "Error al guardar credenciales" };
@@ -121,13 +115,17 @@ export async function deleteMoodleCredentials(
 ): Promise<ActionResult> {
   try {
     const session = await requireSession();
-    const db = await getDb();
 
-    const doc = await db.collection("moodle_credentials").doc(id).get();
-    if (!doc.exists) throw new NotFoundError("Credencial");
-    if (doc.get("userId") !== session.uid) throw new NotFoundError("Credencial");
+    const rows = await db
+      .select({ userId: moodleCredentials.userId })
+      .from(moodleCredentials)
+      .where(eq(moodleCredentials.id, id))
+      .limit(1);
 
-    await doc.ref.delete();
+    if (!rows[0] || rows[0].userId !== session.uid)
+      throw new NotFoundError("Credencial");
+
+    await db.delete(moodleCredentials).where(eq(moodleCredentials.id, id));
     revalidatePath("/dashboard/settings");
     return { success: true, data: undefined };
   } catch (error) {
@@ -141,14 +139,13 @@ export async function deleteMoodleCredentials(
 
 export async function getUserMoodleCredentials(): Promise<MoodleCredentials[]> {
   const session = await requireSession();
-  const db = await getDb();
 
-  const snapshot = await db
-    .collection("moodle_credentials")
-    .where("userId", "==", session.uid)
-    .get();
+  const rows = await db
+    .select()
+    .from(moodleCredentials)
+    .where(eq(moodleCredentials.userId, session.uid));
 
-  return snapshot.docs.map(mapCredential);
+  return rows.map(mapCredential);
 }
 
 export async function syncMoodlePlatform(
@@ -156,22 +153,30 @@ export async function syncMoodlePlatform(
 ): Promise<ActionResult<MoodleSyncResult>> {
   try {
     const session = await requireSession();
-    const db = await getDb();
 
-    const doc = await db.collection("moodle_credentials").doc(credentialId).get();
-    if (!doc.exists) throw new NotFoundError("Credencial");
-    if (doc.get("userId") !== session.uid) throw new NotFoundError("Credencial");
+    const rows = await db
+      .select()
+      .from(moodleCredentials)
+      .where(eq(moodleCredentials.id, credentialId))
+      .limit(1);
 
-    const platform = doc.get("platform") as MoodlePlatform;
-    const username = doc.get("username") as string;
-    const encryptedPassword = doc.get("encryptedPassword") as string;
-    const ivHex = doc.get("iv") as string;
-    const tagHex = doc.get("tag") as string;
+    const credRow = rows[0];
+    if (!credRow || credRow.userId !== session.uid)
+      throw new NotFoundError("Credencial");
 
-    const password = decrypt(encryptedPassword, ivHex, tagHex);
+    const platform = credRow.platform;
+    const password = decrypt(
+      credRow.encryptedPassword,
+      credRow.iv,
+      credRow.tag
+    );
     const baseUrl = MOODLE_URLS[platform];
 
-    const client = new MoodleClient({ baseUrl, username, password });
+    const client = new MoodleClient({
+      baseUrl,
+      username: credRow.username,
+      password,
+    });
     await client.login();
 
     const test = await client.testConnection();
@@ -194,36 +199,46 @@ export async function syncMoodlePlatform(
     for (const course of courses) {
       try {
         const existing = await db
-          .collection("projects")
-          .where("userId", "==", session.uid)
-          .where("moodleCourseId", "==", String(course.id))
-          .where("moodlePlatform", "==", platform)
-          .limit(1)
-          .get();
+          .select()
+          .from(projects)
+          .where(
+            and(
+              eq(projects.userId, session.uid),
+              eq(projects.moodleCourseId, String(course.id)),
+              eq(projects.moodlePlatform, platform)
+            )
+          )
+          .limit(1);
 
-        if (!existing.empty) {
-          const doc = existing.docs[0]!;
-          projectMap.set(course.id, doc.id);
+        if (existing[0]) {
+          const current = existing[0];
+          projectMap.set(course.id, current.id);
           // Update name in case shortname changed
-          if (doc.get("name") !== (course.shortname || course.fullname)) {
-            await doc.ref.update({
-              name: course.shortname || course.fullname,
-              description: course.fullname !== course.shortname ? course.fullname : null,
-              updatedAt: FieldValue.serverTimestamp(),
-            });
+          if (current.name !== (course.shortname || course.fullname)) {
+            await db
+              .update(projects)
+              .set({
+                name: course.shortname || course.fullname,
+                description:
+                  course.fullname !== course.shortname
+                    ? course.fullname
+                    : null,
+                updatedAt: new Date(),
+              })
+              .where(eq(projects.id, current.id));
           }
         } else {
           const sortNum = await getNextProjectSortOrder(session.uid);
-          const projectData = moodleCourseToProject(course, platform, session.uid);
-          const projectRef = db.collection("projects").doc();
-          await projectRef.set({
-            ...projectData,
-            id: projectRef.id,
-            sortOrder: sortNum,
-            createdAt: FieldValue.serverTimestamp(),
-            updatedAt: FieldValue.serverTimestamp(),
-          });
-          projectMap.set(course.id, projectRef.id);
+          const projectData = moodleCourseToProject(
+            course,
+            platform,
+            session.uid
+          );
+          const inserted = await db
+            .insert(projects)
+            .values({ ...projectData, sortOrder: sortNum })
+            .returning();
+          projectMap.set(course.id, inserted[0]!.id);
         }
       } catch (err) {
         errors.push(
@@ -244,33 +259,42 @@ export async function syncMoodlePlatform(
         );
 
         const existing = await db
-          .collection("tasks")
-          .where("userId", "==", session.uid)
-          .where("moodleAssignmentId", "==", String(event.id))
-          .where("moodlePlatform", "==", platform)
-          .limit(1)
-          .get();
+          .select()
+          .from(tasks)
+          .where(
+            and(
+              eq(tasks.userId, session.uid),
+              eq(tasks.moodleAssignmentId, String(event.id)),
+              eq(tasks.moodlePlatform, platform)
+            )
+          )
+          .limit(1);
 
-        if (!existing.empty) {
-          const taskDoc = existing.docs[0]!;
-          const currentStatus = taskDoc.get("status");
-          if (currentStatus === "completed" || currentStatus === "cancelled") {
+        if (existing[0]) {
+          const current = existing[0];
+          if (
+            current.status === "completed" ||
+            current.status === "cancelled"
+          ) {
             continue;
           }
-          await taskDoc.ref.update({
-            title: taskData.title,
-            dueDate: taskData.dueDate,
-            priority: taskData.priority,
-            description: taskData.description,
-            updatedAt: FieldValue.serverTimestamp(),
-          });
+          await db
+            .update(tasks)
+            .set({
+              title: taskData.title,
+              dueDate: toDateOrNull(taskData.dueDate),
+              priority: taskData.priority,
+              description: taskData.description,
+              updatedAt: new Date(),
+            })
+            .where(eq(tasks.id, current.id));
         } else {
-          const taskRef = db.collection("tasks").doc();
-          await taskRef.set({
+          await db.insert(tasks).values({
             ...taskData,
-            id: taskRef.id,
-            createdAt: FieldValue.serverTimestamp(),
-            updatedAt: FieldValue.serverTimestamp(),
+            startDate: toDateOrNull(taskData.startDate),
+            dueDate: toDateOrNull(taskData.dueDate),
+            completedAt: null,
+            sortOrder: await getNextTaskSortOrder(session.uid),
           });
         }
       } catch (err) {
@@ -280,9 +304,10 @@ export async function syncMoodlePlatform(
       }
     }
 
-    await doc.ref.update({
-      lastSyncAt: FieldValue.serverTimestamp(),
-    });
+    await db
+      .update(moodleCredentials)
+      .set({ lastSyncAt: new Date(), updatedAt: new Date() })
+      .where(eq(moodleCredentials.id, credentialId));
 
     revalidatePath("/dashboard/tasks");
     revalidatePath("/dashboard/projects");
@@ -309,29 +334,25 @@ export async function syncMoodlePlatform(
 }
 
 async function getNextProjectSortOrder(userId: string): Promise<number> {
-  const db = await getDb();
-  try {
-    const last = await db
-      .collection("projects")
-      .where("userId", "==", userId)
-      .orderBy("sortOrder", "desc")
-      .limit(1)
-      .get();
-    if (last.empty) return 0;
-    return Number(last.docs[0].get("sortOrder") ?? -1) + 1;
-  } catch {
-    const all = await db
-      .collection("projects")
-      .where("userId", "==", userId)
-      .get();
-    if (all.empty) return 0;
-    let max = -1;
-    for (const doc of all.docs) {
-      const val = Number(doc.get("sortOrder") ?? -1);
-      if (val > max) max = val;
-    }
-    return max + 1;
-  }
+  const rows = await db
+    .select({ sortOrder: projects.sortOrder })
+    .from(projects)
+    .where(eq(projects.userId, userId))
+    .orderBy(desc(projects.sortOrder))
+    .limit(1);
+
+  return (rows[0]?.sortOrder ?? -1) + 1;
+}
+
+async function getNextTaskSortOrder(userId: string): Promise<number> {
+  const rows = await db
+    .select({ sortOrder: tasks.sortOrder })
+    .from(tasks)
+    .where(eq(tasks.userId, userId))
+    .orderBy(desc(tasks.sortOrder))
+    .limit(1);
+
+  return (rows[0]?.sortOrder ?? -1) + 1;
 }
 
 export async function unlinkMoodleProject(
@@ -339,18 +360,25 @@ export async function unlinkMoodleProject(
 ): Promise<ActionResult> {
   try {
     const session = await requireSession();
-    const db = await getDb();
 
-    const doc = await db.collection("projects").doc(projectId).get();
-    if (!doc.exists) throw new NotFoundError("Proyecto");
-    if (doc.get("userId") !== session.uid) throw new NotFoundError("Proyecto");
+    const rows = await db
+      .select()
+      .from(projects)
+      .where(eq(projects.id, projectId))
+      .limit(1);
 
-    await doc.ref.update({
-      moodleCourseId: null,
-      moodlePlatform: null,
-      moodleUrl: null,
-      updatedAt: FieldValue.serverTimestamp(),
-    });
+    if (!rows[0] || rows[0].userId !== session.uid)
+      throw new NotFoundError("Proyecto");
+
+    await db
+      .update(projects)
+      .set({
+        moodleCourseId: null,
+        moodlePlatform: null,
+        moodleUrl: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(projects.id, projectId));
 
     revalidatePath("/dashboard/projects");
     revalidatePath("/dashboard/tasks");

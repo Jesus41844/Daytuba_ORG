@@ -1,10 +1,12 @@
 "use server";
 
+import { desc, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { FieldValue } from "firebase-admin/firestore";
-import { getDb } from "@/lib/db/server";
-import { mapProject } from "@/lib/firebase/mappers";
+
+import { db } from "@/db";
+import { mapProject } from "@/db/mappers";
+import { projects } from "@/db/schema";
 import type { Project } from "@/types";
 import { requireSession } from "@/lib/auth/session";
 import {
@@ -35,39 +37,28 @@ function validationResult(error: z.ZodError): ActionResult<never> {
 
 async function findUserProject(id: string) {
   const session = await requireSession();
-  const db = await getDb();
 
-  const snapshot = await db.collection("projects").doc(id).get();
-  if (!snapshot.exists) throw new NotFoundError("El proyecto");
-  if (snapshot.get("userId") !== session.uid) throw new NotFoundError("El proyecto");
+  const rows = await db
+    .select()
+    .from(projects)
+    .where(eq(projects.id, id))
+    .limit(1);
 
-  return { session, ref: snapshot.ref };
+  const row = rows[0];
+  if (!row || row.userId !== session.uid) throw new NotFoundError("El proyecto");
+
+  return { session, row };
 }
 
 async function getNextSortOrder(userId: string): Promise<number> {
-  const db = await getDb();
-  try {
-    const lastProject = await db
-      .collection("projects")
-      .where("userId", "==", userId)
-      .orderBy("sortOrder", "desc")
-      .limit(1)
-      .get();
-    if (lastProject.empty) return 0;
-    return Number(lastProject.docs[0].get("sortOrder") ?? -1) + 1;
-  } catch {
-    const allProjects = await db
-      .collection("projects")
-      .where("userId", "==", userId)
-      .get();
-    if (allProjects.empty) return 0;
-    let maxSort = -1;
-    for (const doc of allProjects.docs) {
-      const val = Number(doc.get("sortOrder") ?? -1);
-      if (val > maxSort) maxSort = val;
-    }
-    return maxSort + 1;
-  }
+  const rows = await db
+    .select({ sortOrder: projects.sortOrder })
+    .from(projects)
+    .where(eq(projects.userId, userId))
+    .orderBy(desc(projects.sortOrder))
+    .limit(1);
+
+  return (rows[0]?.sortOrder ?? -1) + 1;
 }
 
 export async function createProject(
@@ -75,41 +66,28 @@ export async function createProject(
 ): Promise<ActionResult<Project>> {
   try {
     const session = await requireSession();
-    const db = await getDb();
 
     const parsed = createProjectSchema.safeParse(data);
     if (!parsed.success) return validationResult(parsed.error);
 
-    const projectRef = db.collection("projects").doc();
-    const now = new Date().toISOString();
-
-    const project: Project = {
-      id: projectRef.id,
-      userId: session.uid,
-      name: parsed.data.name,
-      description: parsed.data.description ?? null,
-      icon: parsed.data.icon ?? "",
-      color: parsed.data.color ?? "#6b7280",
-      sortOrder: await getNextSortOrder(session.uid),
-      isDefault: false,
-      moodleCourseId: null,
-      moodlePlatform: null,
-      moodleUrl: null,
-      createdAt: now,
-      updatedAt: now,
-    };
-
-    await projectRef.set({
-      ...project,
-      createdAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp(),
-    });
+    const inserted = await db
+      .insert(projects)
+      .values({
+        userId: session.uid,
+        name: parsed.data.name,
+        description: parsed.data.description ?? null,
+        icon: parsed.data.icon ?? "",
+        color: parsed.data.color ?? "#6b7280",
+        sortOrder: await getNextSortOrder(session.uid),
+        isDefault: false,
+      })
+      .returning();
 
     revalidatePath("/dashboard/projects");
     revalidatePath("/dashboard/tasks");
     revalidatePath("/dashboard/inbox");
     revalidatePath("/dashboard");
-    return { success: true, data: project };
+    return { success: true, data: mapProject(inserted[0]!) };
   } catch (error) {
     return toActionError(error);
   }
@@ -120,31 +98,34 @@ export async function updateProject(
   data: Partial<CreateProjectInput>
 ): Promise<ActionResult<Project>> {
   try {
-    const { ref } = await findUserProject(id);
+    await findUserProject(id);
 
     const parsed = createProjectSchema.partial().safeParse(data);
     if (!parsed.success) return validationResult(parsed.error);
 
-    const values: Record<string, unknown> = {};
-    if (parsed.data.name !== undefined) values.name = parsed.data.name;
-    if (parsed.data.description !== undefined)
-      values.description = parsed.data.description ?? null;
-    if (parsed.data.icon !== undefined) values.icon = parsed.data.icon ?? "";
-    if (parsed.data.color !== undefined)
-      values.color = parsed.data.color ?? "#6b7280";
-
-    await ref.update({
-      ...values,
-      updatedAt: FieldValue.serverTimestamp(),
-    });
-
-    const updated = await ref.get();
+    const updated = await db
+      .update(projects)
+      .set({
+        ...(parsed.data.name !== undefined && { name: parsed.data.name }),
+        ...(parsed.data.description !== undefined && {
+          description: parsed.data.description ?? null,
+        }),
+        ...(parsed.data.icon !== undefined && {
+          icon: parsed.data.icon ?? "",
+        }),
+        ...(parsed.data.color !== undefined && {
+          color: parsed.data.color ?? "#6b7280",
+        }),
+        updatedAt: new Date(),
+      })
+      .where(eq(projects.id, id))
+      .returning();
 
     revalidatePath("/dashboard/projects");
     revalidatePath("/dashboard/tasks");
     revalidatePath("/dashboard/inbox");
     revalidatePath("/dashboard");
-    return { success: true, data: mapProject(updated) };
+    return { success: true, data: mapProject(updated[0]!) };
   } catch (error) {
     return toActionError(error);
   }
@@ -152,8 +133,8 @@ export async function updateProject(
 
 export async function deleteProject(id: string): Promise<ActionResult> {
   try {
-    const { ref } = await findUserProject(id);
-    await ref.delete();
+    await findUserProject(id);
+    await db.delete(projects).where(eq(projects.id, id));
 
     revalidatePath("/dashboard/projects");
     revalidatePath("/dashboard/tasks");

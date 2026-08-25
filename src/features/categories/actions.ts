@@ -1,9 +1,12 @@
 "use server";
 
+import { and, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { FieldValue } from "firebase-admin/firestore";
-import { getDb } from "@/lib/db/server";
+
+import { db } from "@/db";
+import { mapCategory } from "@/db/mappers";
+import { categories, tasks } from "@/db/schema";
 import type { Category } from "@/types";
 import { requireSession } from "@/lib/auth/session";
 import {
@@ -30,37 +33,56 @@ function validationResult(error: z.ZodError): ActionResult<never> {
   };
 }
 
+async function findUserCategory(id: string) {
+  const session = await requireSession();
+
+  const rows = await db
+    .select()
+    .from(categories)
+    .where(eq(categories.id, id))
+    .limit(1);
+
+  const row = rows[0];
+  if (!row || row.userId !== session.uid)
+    throw new NotFoundError("La categoría");
+
+  return row;
+}
+
 export async function createCategory(
   data: CreateCategoryInput
 ): Promise<ActionResult<Category>> {
   try {
     const session = await requireSession();
-    const db = await getDb();
 
     const parsed = createCategorySchema.safeParse(data);
     if (!parsed.success) return validationResult(parsed.error);
 
     const existing = await db
-      .collection("categories")
-      .where("userId", "==", session.uid)
-      .where("name", "==", parsed.data.name)
-      .limit(1)
-      .get();
-    if (!existing.empty) {
+      .select({ id: categories.id })
+      .from(categories)
+      .where(
+        and(
+          eq(categories.userId, session.uid),
+          eq(categories.name, parsed.data.name)
+        )
+      )
+      .limit(1);
+
+    if (existing.length > 0) {
       throw new ConflictError("Ya existe una categoría con ese nombre");
     }
 
-    const categoryRef = db.collection("categories").doc();
+    const inserted = await db
+      .insert(categories)
+      .values({
+        userId: session.uid,
+        name: parsed.data.name,
+        color: parsed.data.color ?? "#6b7280",
+      })
+      .returning();
 
-    const category: Category = {
-      id: categoryRef.id,
-      userId: session.uid,
-      name: parsed.data.name,
-      color: parsed.data.color ?? "#6b7280",
-      createdAt: new Date().toISOString(),
-    };
-
-    await categoryRef.set({ ...category, createdAt: FieldValue.serverTimestamp() });
+    const category = mapCategory(inserted[0]!);
 
     revalidatePath("/dashboard/tasks");
     revalidatePath("/dashboard/categories");
@@ -77,32 +99,25 @@ export async function updateCategory(
   data: Partial<CreateCategoryInput>
 ): Promise<ActionResult<Category>> {
   try {
-    const session = await requireSession();
-    const db = await getDb();
-
-    const snapshot = await db.collection("categories").doc(id).get();
-    if (!snapshot.exists) throw new NotFoundError("La categoría");
-    if (snapshot.get("userId") !== session.uid) throw new NotFoundError("La categoría");
+    const existing = await findUserCategory(id);
 
     const parsed = createCategorySchema.partial().safeParse(data);
     if (!parsed.success) return validationResult(parsed.error);
 
-    const values: Record<string, unknown> = {};
-    if (parsed.data.name !== undefined) values.name = parsed.data.name;
-    if (parsed.data.color !== undefined) values.color = parsed.data.color;
-
-    await snapshot.ref.update({
-      ...values,
-      updatedAt: FieldValue.serverTimestamp(),
-    });
-
-    const updated = await snapshot.ref.get();
+    const updated = await db
+      .update(categories)
+      .set({
+        ...(parsed.data.name !== undefined && { name: parsed.data.name }),
+        ...(parsed.data.color !== undefined && { color: parsed.data.color }),
+      })
+      .where(eq(categories.id, existing.id))
+      .returning();
 
     revalidatePath("/dashboard/tasks");
     revalidatePath("/dashboard/categories");
     revalidatePath("/dashboard/inbox");
     revalidatePath("/dashboard");
-    return { success: true, data: { id: updated.id, ...updated.data() } as Category };
+    return { success: true, data: mapCategory(updated[0]!) };
   } catch (error) {
     return toActionError(error);
   }
@@ -110,28 +125,23 @@ export async function updateCategory(
 
 export async function deleteCategory(id: string): Promise<ActionResult> {
   try {
-    const session = await requireSession();
-    const db = await getDb();
+    const existing = await findUserCategory(id);
 
-    const snapshot = await db.collection("categories").doc(id).get();
-    if (!snapshot.exists) throw new NotFoundError("La categoría");
-    if (snapshot.get("userId") !== session.uid) throw new NotFoundError("La categoría");
-
-    const tasksWithCategory = await db
-      .collection("tasks")
-      .where("userId", "==", session.uid)
-      .where("categories", "array-contains", id)
-      .get();
-
-    const batch = db.batch();
-    for (const task of tasksWithCategory.docs) {
-      batch.update(task.ref, {
-        categories: FieldValue.arrayRemove(id),
-        updatedAt: FieldValue.serverTimestamp(),
-      });
-    }
-    batch.delete(snapshot.ref);
-    await batch.commit();
+    await db.transaction(async (tx) => {
+      await tx
+        .update(tasks)
+        .set({
+          categories: sql`array_remove(categories, ${id})`,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(tasks.userId, existing.userId),
+            sql`${id} = ANY(categories)`
+          )
+        );
+      await tx.delete(categories).where(eq(categories.id, id));
+    });
 
     revalidatePath("/dashboard/tasks");
     revalidatePath("/dashboard/categories");
@@ -149,20 +159,30 @@ export async function addCategoryToTask(
 ): Promise<ActionResult> {
   try {
     const session = await requireSession();
-    const db = await getDb();
 
-    const taskSnapshot = await db.collection("tasks").doc(taskId).get();
-    if (!taskSnapshot.exists) throw new NotFoundError("La tarea");
-    if (taskSnapshot.get("userId") !== session.uid) throw new NotFoundError("La tarea");
+    const taskRows = await db
+      .select({ userId: tasks.userId })
+      .from(tasks)
+      .where(eq(tasks.id, taskId))
+      .limit(1);
+    if (!taskRows[0] || taskRows[0].userId !== session.uid)
+      throw new NotFoundError("La tarea");
 
-    const categorySnapshot = await db.collection("categories").doc(categoryId).get();
-    if (!categorySnapshot.exists) throw new NotFoundError("La categoría");
-    if (categorySnapshot.get("userId") !== session.uid) throw new NotFoundError("La categoría");
+    const categoryRows = await db
+      .select({ userId: categories.userId })
+      .from(categories)
+      .where(eq(categories.id, categoryId))
+      .limit(1);
+    if (!categoryRows[0] || categoryRows[0].userId !== session.uid)
+      throw new NotFoundError("La categoría");
 
-    await taskSnapshot.ref.update({
-      categories: FieldValue.arrayUnion(categoryId),
-      updatedAt: FieldValue.serverTimestamp(),
-    });
+    await db
+      .update(tasks)
+      .set({
+        categories: sql`array_append(${tasks.categories}, ${categoryId})`,
+        updatedAt: new Date(),
+      })
+      .where(eq(tasks.id, taskId));
 
     revalidatePath("/dashboard/tasks");
     revalidatePath(`/dashboard/tasks/${taskId}`);
@@ -179,16 +199,22 @@ export async function removeCategoryFromTask(
 ): Promise<ActionResult> {
   try {
     const session = await requireSession();
-    const db = await getDb();
 
-    const taskSnapshot = await db.collection("tasks").doc(taskId).get();
-    if (!taskSnapshot.exists) throw new NotFoundError("La tarea");
-    if (taskSnapshot.get("userId") !== session.uid) throw new NotFoundError("La tarea");
+    const taskRows = await db
+      .select({ userId: tasks.userId })
+      .from(tasks)
+      .where(eq(tasks.id, taskId))
+      .limit(1);
+    if (!taskRows[0] || taskRows[0].userId !== session.uid)
+      throw new NotFoundError("La tarea");
 
-    await taskSnapshot.ref.update({
-      categories: FieldValue.arrayRemove(categoryId),
-      updatedAt: FieldValue.serverTimestamp(),
-    });
+    await db
+      .update(tasks)
+      .set({
+        categories: sql`array_remove(${tasks.categories}, ${categoryId})`,
+        updatedAt: new Date(),
+      })
+      .where(eq(tasks.id, taskId));
 
     revalidatePath("/dashboard/tasks");
     revalidatePath(`/dashboard/tasks/${taskId}`);
