@@ -1,4 +1,5 @@
 import * as React from "react";
+import { redirect } from "next/navigation";
 
 import { getSession } from "@/lib/auth/session";
 import { Sidebar } from "@/components/layout/sidebar";
@@ -12,6 +13,7 @@ export default async function AppLayout({
   children: React.ReactNode;
 }) {
   const session = await getSession();
+  if (!session) redirect("/api/auth/clear-session");
 
   return (
     <SidebarProvider>
