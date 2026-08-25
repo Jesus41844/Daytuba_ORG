@@ -118,8 +118,12 @@ npm run db:generate
 ## Producción (Docker)
 
 ```bash
-# Configurar entorno (DATABASE_URL apunta al servicio "db")
+# Configurar entorno (POSTGRES_PASSWORD y MOODLE_ENCRYPTION_KEY obligatorias)
 cp .env.example .env && $EDITOR .env
+
+# Primera vez: aplicar migraciones (sin exponer el puerto de la BD)
+docker compose up -d db
+docker compose exec -T db psql -v ON_ERROR_STOP=1 -U utp -d utp_tasks < drizzle/0000_init-selfhosted-schema.sql
 
 # Construir y levantar todo
 docker compose up -d --build

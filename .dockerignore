@@ -1,0 +1,10 @@
+node_modules
+.next
+.git
+.env*
+!.env.example
+uploads
+scripts/migration-data.json
+drizzle/meta/_journal.json.bak
+*.log
+.DS_Store
