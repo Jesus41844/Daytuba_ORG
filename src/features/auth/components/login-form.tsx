@@ -7,14 +7,6 @@ import { Loader2 } from "lucide-react";
 
 import { loginSchema, type LoginInput } from "@/lib/validations";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "@/components/ui/toast";
@@ -27,7 +19,7 @@ function SubmitButton() {
   return (
     <Button type="submit" className="w-full" disabled={pending}>
       {pending && <Loader2 className="animate-spin" aria-hidden="true" />}
-      Iniciar sesión
+      Entrar
     </Button>
   );
 }
@@ -55,65 +47,55 @@ export function LoginForm() {
     } else {
       toast.add({
         type: "error",
-        title: "Error al iniciar sesión",
+        title: "No se pudo iniciar sesión",
         description: result.error,
       });
     }
   }
 
   return (
-    <Card className="w-full max-w-sm">
-      <CardHeader>
-        <CardTitle>Iniciar sesión</CardTitle>
-        <CardDescription>
-          Ingresa tus credenciales para acceder a tu cuenta
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="grid gap-4">
-          <div className="grid gap-2">
-            <Label htmlFor="email">Email</Label>
-            <Input
-              id="email"
-              type="email"
-              placeholder="tu@utp.ac.pa"
-              autoComplete="email"
-              {...form.register("email")}
-            />
-            {form.formState.errors.email && (
-              <p className="text-sm text-destructive">
-                {form.formState.errors.email.message}
-              </p>
-            )}
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="password">Contraseña</Label>
-            <Input
-              id="password"
-              type="password"
-              autoComplete="current-password"
-              {...form.register("password")}
-            />
-            {form.formState.errors.password && (
-              <p className="text-sm text-destructive">
-                {form.formState.errors.password.message}
-              </p>
-            )}
-          </div>
-          <SubmitButton />
-        </form>
-      </CardContent>
-      <CardFooter>
-        <p className="text-sm text-muted-foreground">
-          ¿No tienes una cuenta?{" "}
-          <Link
-            href="/register"
-            className="font-medium text-primary underline-offset-4 hover:underline"
-          >
-            Regístrate
-          </Link>
-        </p>
-      </CardFooter>
-    </Card>
+    <div className="w-full space-y-6">
+      <form onSubmit={form.handleSubmit(onSubmit)} className="grid gap-4">
+        <div className="grid gap-2">
+          <Label htmlFor="email">Email</Label>
+          <Input
+            id="email"
+            type="email"
+            placeholder="tu@utp.ac.pa"
+            autoComplete="email"
+            {...form.register("email")}
+          />
+          {form.formState.errors.email && (
+            <p className="text-sm text-destructive">
+              {form.formState.errors.email.message}
+            </p>
+          )}
+        </div>
+        <div className="grid gap-2">
+          <Label htmlFor="password">Contraseña</Label>
+          <Input
+            id="password"
+            type="password"
+            autoComplete="current-password"
+            {...form.register("password")}
+          />
+          {form.formState.errors.password && (
+            <p className="text-sm text-destructive">
+              {form.formState.errors.password.message}
+            </p>
+          )}
+        </div>
+        <SubmitButton />
+      </form>
+      <p className="text-center text-sm text-muted-foreground">
+        ¿No tienes una cuenta?{" "}
+        <Link
+          href="/register"
+          className="font-medium text-primary underline-offset-4 hover:underline"
+        >
+          Crea tu cuenta
+        </Link>
+      </p>
+    </div>
   );
 }

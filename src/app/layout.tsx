@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Plus_Jakarta_Sans } from "next/font/google";
+import { Plus_Jakarta_Sans, Space_Grotesk } from "next/font/google";
 
 import "./globals.css";
 import { ThemeProvider } from "@/components/providers/theme-provider";
@@ -9,9 +9,15 @@ const plusJakarta = Plus_Jakarta_Sans({
   subsets: ["latin"],
 });
 
+const spaceGrotesk = Space_Grotesk({
+  variable: "--font-display",
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+});
+
 export const metadata: Metadata = {
   title: "Daytuba Tasks",
-  description: "Plataforma de gestión de tareas para estudiantes UTP",
+  description: "Organiza tu semana universitaria — tareas, proyectos y calendario en un solo lugar",
 };
 
 const THEME_SCRIPT = `
@@ -22,7 +28,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="es"
-      className={`${plusJakarta.variable} h-full antialiased`}
+      className={`${plusJakarta.variable} ${spaceGrotesk.variable} h-full antialiased`}
       suppressHydrationWarning
     >
       <body className="flex min-h-full flex-col">

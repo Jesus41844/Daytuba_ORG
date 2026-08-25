@@ -9,18 +9,38 @@ export default function AuthLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex min-h-svh flex-col items-center justify-center bg-gradient-to-b from-primary/8 via-background to-background px-4 py-10">
-      <Link
-        href="/"
-        className="mb-8 flex flex-col items-center gap-2"
-        aria-label="Daytuba - Inicio"
-      >
-        <span className="flex size-12 items-center justify-center rounded-2xl bg-primary text-xl font-bold text-primary-foreground shadow-sm">
-          U
-        </span>
-        <span className="text-lg font-bold tracking-tight">Daytuba</span>
-      </Link>
-      <main className="w-full max-w-sm">{children}</main>
+    <div className="relative flex min-h-svh flex-col items-center justify-center bg-notebook-lines px-4 py-10">
+      <div className="flex w-full max-w-sm flex-col items-start gap-8">
+        <header className="flex flex-col items-start gap-2">
+          <Link
+            href="/"
+            className="animate-fade-in-up flex items-center gap-3"
+            aria-label="Daytuba — ir al inicio"
+            style={{ animationDelay: "0ms" }}
+          >
+            <span className="flex size-10 items-center justify-center rounded-xl bg-primary text-lg font-bold text-primary-foreground shadow-sm">
+              D
+            </span>
+            <span className="font-display text-3xl font-bold tracking-tight text-foreground">
+              Daytuba
+            </span>
+          </Link>
+          <p
+            className="animate-fade-in-up text-sm text-muted-foreground"
+            style={{ animationDelay: "80ms" }}
+          >
+            Organiza tu semana universitaria
+          </p>
+        </header>
+
+        <main
+          className="animate-fade-in-up w-full"
+          style={{ animationDelay: "160ms" }}
+        >
+          {children}
+        </main>
+      </div>
+
       <ToasterWrapper />
     </div>
   );
