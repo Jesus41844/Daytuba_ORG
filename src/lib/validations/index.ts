@@ -21,7 +21,10 @@ export const registerSchema = z.object({
 export const createTaskSchema = z.object({
   title: z.string().min(1, "El título es requerido").max(500),
   description: z.string().max(5000).optional(),
-  projectId: z.string().min(1).optional(),
+  projectId: z.preprocess(
+    (value) => (value === "" ? undefined : value),
+    z.string().min(1).optional()
+  ),
   priority: z
     .enum(["low", "medium", "high", "urgent"])
     .default("medium"),
