@@ -19,7 +19,6 @@ import type { Project, Task, Category } from "@/types";
 import { createTaskSchema, type CreateTaskInput } from "@/lib/validations";
 import { createTask } from "../actions";
 import { uploadTaskPdf } from "@/features/files/actions";
-import { parsePdf } from "@/lib/pdf";
 
 type CreateTaskFormProps = {
   projects: Project[];
