@@ -48,3 +48,6 @@ next-env.d.ts
 # migración
 scripts/migration-data.json
 /uploads/
+
+# backups de base de datos (contienen datos sensibles)
+/backup-*.sql
