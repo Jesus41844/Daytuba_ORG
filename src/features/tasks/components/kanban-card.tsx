@@ -77,7 +77,10 @@ export function KanbanCard({
       </div>
 
       {task.dueDate && (
-        <span className="flex items-center gap-1 pl-5.5 text-[11px] text-muted-foreground">
+        <span
+          suppressHydrationWarning
+          className="flex items-center gap-1 pl-5.5 text-[11px] text-muted-foreground"
+        >
           <CalendarIcon className="size-3" />
           {format(new Date(task.dueDate), "d MMM", { locale: es })}
         </span>

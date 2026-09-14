@@ -123,7 +123,7 @@ export function SidebarSearch() {
                       {STATUS_LABELS[task.status] ?? task.status}
                     </span>
                     {task.dueDate && (
-                      <span className="flex items-center gap-1">
+                      <span suppressHydrationWarning className="flex items-center gap-1">
                         <CalendarIcon className="size-3" />
                         {format(new Date(task.dueDate), "d MMM", { locale: es })}
                       </span>

@@ -170,6 +170,7 @@ export function TaskCard({ task, categories = [], onEdit }: TaskCardProps) {
 
         {task.dueDate && (
           <span
+            suppressHydrationWarning
             className={cn(
               "flex items-center gap-1 text-xs text-muted-foreground",
               isOverdue && "font-medium text-destructive"
@@ -183,7 +184,10 @@ export function TaskCard({ task, categories = [], onEdit }: TaskCardProps) {
         {task.reminderAt &&
           task.status !== "completed" &&
           task.status !== "cancelled" && (
-            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+            <span
+              suppressHydrationWarning
+              className="flex items-center gap-1 text-xs text-muted-foreground"
+            >
               <BellRing className="size-3" />
               {format(new Date(task.reminderAt), "d MMM yyyy HH:mm", {
                 locale: es,

@@ -71,6 +71,7 @@ export function InboxList({ tasks }: InboxListProps) {
 
               {task.dueDate && (
                 <span
+                  suppressHydrationWarning
                   className={cn(
                     "flex shrink-0 items-center gap-1 text-xs text-muted-foreground",
                     isOverdue && "font-medium text-destructive"
