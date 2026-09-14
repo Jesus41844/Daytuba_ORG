@@ -43,6 +43,7 @@ export interface Task {
   moodleCourseId: string | null;
   moodleAssignmentId: string | null;
   moodleUrl: string | null;
+  reminderAt: string | null;
   createdAt: string;
   updatedAt: string;
 }

@@ -73,6 +73,7 @@ export function EditTaskForm({
       projectId: task.projectId ?? "",
       dueDate: task.dueDate?.slice(0, 10) ?? "",
       startDate: task.startDate?.slice(0, 10) ?? "",
+      reminderAt: task.reminderAt?.slice(0, 16) ?? "",
     },
   });
 
@@ -112,6 +113,7 @@ export function EditTaskForm({
         projectId: data.projectId || undefined,
         dueDate: data.dueDate || undefined,
         startDate: data.startDate || undefined,
+        reminderAt: data.reminderAt || undefined,
       });
       if (!result.success) {
         setError(result.error);
@@ -226,6 +228,15 @@ export function EditTaskForm({
                 id="edit-startDate"
                 type="date"
                 {...form.register("startDate")}
+              />
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="edit-reminderAt">Recordatorio</Label>
+              <Input
+                id="edit-reminderAt"
+                type="datetime-local"
+                {...form.register("reminderAt")}
               />
             </div>
           </div>

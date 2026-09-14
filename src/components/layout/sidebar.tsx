@@ -14,7 +14,8 @@ import {
   Settings,
   Tag,
   UserRound,
-  ChevronsRight,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -37,6 +38,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
+import { SidebarSearch } from "@/components/layout/sidebar-search";
 import { useSidebarWidth } from "@/components/layout/sidebar-provider";
 
 const NAV_ITEMS = [
@@ -276,13 +278,14 @@ function SidebarBody({
         >
           <button
             onClick={() => (compact ? expand() : collapse())}
-            className="flex size-9 items-center justify-center rounded-2xl bg-primary text-primary-foreground text-sm font-bold shadow-sm hover:opacity-90 transition-opacity cursor-pointer"
+            className="flex size-9 cursor-pointer items-center justify-center rounded-2xl text-muted-foreground shadow-sm transition-colors hover:bg-muted hover:text-foreground"
             title={compact ? "Expandir menú" : "Colapsar menú"}
+            aria-label={compact ? "Expandir menú" : "Colapsar menú"}
           >
             {compact ? (
-              <ChevronsRight className="size-4" />
+              <PanelLeftOpen className="size-5" />
             ) : (
-              "U"
+              <PanelLeftClose className="size-5" />
             )}
           </button>
           {!compact && (
@@ -294,6 +297,12 @@ function SidebarBody({
           {compact && <ThemeToggle className="size-9" />}
         </div>
         <Separator className="opacity-50" />
+        {!compact && (
+          <>
+            <SidebarSearch />
+            <Separator className="opacity-50" />
+          </>
+        )}
         <ScrollArea className="flex-1 py-3">
           <SidebarNav compact={compact} onNavigate={onNavigate} />
         </ScrollArea>

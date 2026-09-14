@@ -5,6 +5,7 @@ import { getSession } from "@/lib/auth/session";
 import { Sidebar } from "@/components/layout/sidebar";
 import { SidebarProvider } from "@/components/layout/sidebar-provider";
 import { ToasterWrapper } from "@/components/providers/toaster-wrapper";
+import { ReminderProvider } from "@/components/providers/reminder-provider";
 import { SidebarWidthUpdater } from "@/components/layout/sidebar-width-updater";
 
 export default async function AppLayout({
@@ -26,6 +27,7 @@ export default async function AppLayout({
           </main>
         </div>
         <ToasterWrapper />
+        <ReminderProvider />
       </div>
     </SidebarProvider>
   );

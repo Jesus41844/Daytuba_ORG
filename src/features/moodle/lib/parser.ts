@@ -76,6 +76,7 @@ export function moodleEventToTask(
     categories: [],
     pdfUrl: null,
     pdfName: null,
+    reminderAt: null,
     moodlePlatform: platform,
     moodleCourseId: String(event.courseid),
     moodleAssignmentId: String(event.id),

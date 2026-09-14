@@ -32,6 +32,7 @@ export const createTaskSchema = z.object({
   recurrence: z
     .enum(["daily", "weekly", "biweekly", "monthly", "yearly", "none"])
     .default("none"),
+  reminderAt: z.string().optional(),
   categories: z.array(z.string()).optional(),
 });
 
@@ -42,6 +43,7 @@ export const updateTaskSchema = createTaskSchema.partial().extend({
   categories: z.array(z.string()).optional(),
   pdfUrl: z.string().url().nullable().optional(),
   pdfName: z.string().max(255).nullable().optional(),
+  reminderAt: z.string().nullable().optional(),
 });
 
 export const createProjectSchema = z.object({

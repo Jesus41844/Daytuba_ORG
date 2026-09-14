@@ -1,12 +1,25 @@
 "use server";
 
-import { and, asc, desc, eq, gt, lt, notInArray } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gt,
+  ilike,
+  or,
+  lt,
+  notInArray,
+  isNotNull,
+} from "drizzle-orm";
 
 import { db } from "@/db";
 import { mapTask } from "@/db/mappers";
 import { tasks } from "@/db/schema";
 import type { Task } from "@/types";
 import { requireSession } from "@/lib/auth/session";
+
+const REMINDER_WINDOW_MS = 10 * 60 * 1000;
 
 export type TaskFilters = {
   projectId?: string;
@@ -114,4 +127,47 @@ export async function getTasksForCalendar(): Promise<Task[]> {
     .map(mapTask)
     .filter((task) => task.dueDate != null)
     .sort((a, b) => (a.dueDate ?? "").localeCompare(b.dueDate ?? ""));
+}
+
+export async function getTasksWithReminders(): Promise<Task[]> {
+  const session = await requireSession();
+
+  const rows = await db
+    .select()
+    .from(tasks)
+    .where(
+      and(
+        eq(tasks.userId, session.uid),
+        eq(tasks.isArchived, false),
+        isNotNull(tasks.reminderAt),
+        gt(tasks.reminderAt, new Date(Date.now() - REMINDER_WINDOW_MS)),
+        notInArray(tasks.status, ["completed", "cancelled"])
+      )
+    )
+    .orderBy(asc(tasks.reminderAt));
+
+  return rows.map(mapTask);
+}
+
+export async function searchTasks(query: string): Promise<Task[]> {
+  const session = await requireSession();
+  const term = query.trim();
+  if (!term) return [];
+
+  const pattern = `%${term}%`;
+
+  const rows = await db
+    .select()
+    .from(tasks)
+    .where(
+      and(
+        eq(tasks.userId, session.uid),
+        eq(tasks.isArchived, false),
+        or(ilike(tasks.title, pattern), ilike(tasks.description, pattern))
+      )
+    )
+    .limit(15)
+    .orderBy(asc(tasks.sortOrder), desc(tasks.createdAt));
+
+  return rows.map(mapTask);
 }

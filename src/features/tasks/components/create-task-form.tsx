@@ -52,6 +52,7 @@ export function CreateTaskForm({
       title: "",
       priority: "medium",
       recurrence: "none",
+      reminderAt: "",
     },
   });
 
@@ -100,6 +101,7 @@ export function CreateTaskForm({
       description: data.description,
       startDate: data.startDate,
       dueDate: data.dueDate,
+      reminderAt: data.reminderAt || undefined,
       ...(selectedCategories.length > 0 && { categories: selectedCategories }),
     };
 
@@ -200,6 +202,18 @@ export function CreateTaskForm({
               aria-label="Fecha de vencimiento"
               {...form.register("dueDate")}
             />
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Input
+              type="datetime-local"
+              aria-label="Recordatorio"
+              className="basis-1/2"
+              {...form.register("reminderAt")}
+            />
+            <span className="text-xs text-muted-foreground">
+              🔔 Recordatorio opcional (notificación)
+            </span>
           </div>
 
           {categories.length > 0 && (

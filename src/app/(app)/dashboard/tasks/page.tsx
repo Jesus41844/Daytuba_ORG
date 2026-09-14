@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Archive } from "lucide-react";
+import { Archive, Kanban, List } from "lucide-react";
 
 import { getSession } from "@/lib/auth/session";
 import { getUserTasks, type TaskFilters } from "@/features/tasks/queries";
 import { getUserProjects } from "@/features/projects/queries";
 import { getUserCategories } from "@/features/categories/queries";
 import { TaskList } from "@/features/tasks/components/task-list";
+import { KanbanBoard } from "@/features/tasks/components/kanban-board";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -37,17 +38,20 @@ type SearchParams = Promise<{
   priority?: string;
   category?: string;
   create?: string;
+  view?: string;
 }>;
 
 function buildHref(
   status: string,
   priority: string,
-  category: string
+  category: string,
+  view: string
 ) {
   const params = new URLSearchParams();
   if (status) params.set("status", status);
   if (priority) params.set("priority", priority);
   if (category) params.set("category", category);
+  if (view) params.set("view", view);
   const qs = params.toString();
   return qs ? `/dashboard/tasks?${qs}` : "/dashboard/tasks";
 }
@@ -60,7 +64,8 @@ export default async function TasksPage({
   const session = await getSession();
   if (!session) redirect("/login");
 
-  const { status, priority, category, create } = await searchParams;
+  const { status, priority, category, create, view } = await searchParams;
+  const activeView = view === "kanban" ? "kanban" : ("list" as const);
 
   const validStatus = STATUS_FILTERS.some((f) => f.value === status)
     ? (status as NonNullable<TaskFilters["status"]>)
@@ -90,15 +95,45 @@ export default async function TasksPage({
           title="Tareas"
           description="Todas tus tareas, organizadas por estado y prioridad."
         />
-        <Button
-          variant="ghost"
-          size="sm"
-          nativeButton={false}
-          render={<Link href="/dashboard/tasks/archived" />}
-        >
-          <Archive data-icon="inline-start" />
-          Archivadas
-        </Button>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center rounded-full bg-muted p-0.5 text-muted-foreground ring-1 ring-border/50">
+            <Link
+              href={buildHref(activeStatus, activePriority, activeCategory, "")}
+              aria-current={activeView === "list" ? "page" : undefined}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
+                activeView === "list"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "hover:text-foreground"
+              )}
+            >
+              <List className="size-3.5" />
+              Lista
+            </Link>
+            <Link
+              href={buildHref(activeStatus, activePriority, activeCategory, "kanban")}
+              aria-current={activeView === "kanban" ? "page" : undefined}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
+                activeView === "kanban"
+                  ? "bg-background text-foreground shadow-sm"
+                  : "hover:text-foreground"
+              )}
+            >
+              <Kanban className="size-3.5" />
+              Kanban
+            </Link>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            nativeButton={false}
+            render={<Link href="/dashboard/tasks/archived" />}
+          >
+            <Archive data-icon="inline-start" />
+            Archivadas
+          </Button>
+        </div>
       </div>
 
       <div className="flex flex-col gap-3 rounded-2xl bg-muted/40 p-3 sm:p-4">
@@ -113,7 +148,8 @@ export default async function TasksPage({
               const href = buildHref(
                 filter.value,
                 activePriority,
-                activeCategory
+                activeCategory,
+                activeView
               );
               return (
                 <Link
@@ -145,7 +181,8 @@ export default async function TasksPage({
               const href = buildHref(
                 activeStatus,
                 filter.value,
-                activeCategory
+                activeCategory,
+                activeView
               );
               return (
                 <Link
@@ -174,7 +211,7 @@ export default async function TasksPage({
             </span>
             <div className="flex flex-wrap gap-1.5">
               <Link
-                href={buildHref(activeStatus, activePriority, "")}
+                href={buildHref(activeStatus, activePriority, "", activeView)}
                 aria-current={!activeCategory ? "true" : undefined}
                 className={cn(
                   "inline-flex items-center rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
@@ -190,7 +227,7 @@ export default async function TasksPage({
                 return (
                   <Link
                     key={c.id}
-                    href={buildHref(activeStatus, activePriority, c.id)}
+                    href={buildHref(activeStatus, activePriority, c.id, activeView)}
                     aria-current={isActive ? "true" : undefined}
                     className={cn(
                       "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
@@ -217,7 +254,16 @@ export default async function TasksPage({
         )}
       </div>
 
-      <TaskList tasks={tasks} projects={projects} categories={categories} autoOpen={create === "true"} />
+      {activeView === "kanban" ? (
+        <KanbanBoard tasks={tasks} categories={categories} />
+      ) : (
+        <TaskList
+          tasks={tasks}
+          projects={projects}
+          categories={categories}
+          autoOpen={create === "true"}
+        />
+      )}
     </div>
   );
 }

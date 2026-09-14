@@ -42,6 +42,7 @@ export function mapTask(row: TaskRow): Task {
     moodleCourseId: row.moodleCourseId,
     moodleAssignmentId: row.moodleAssignmentId,
     moodleUrl: row.moodleUrl,
+    reminderAt: toIso(row.reminderAt),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };

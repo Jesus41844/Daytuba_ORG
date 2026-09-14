@@ -133,6 +133,7 @@ export const tasks = pgTable(
     moodleCourseId: text("moodle_course_id"),
     moodleAssignmentId: text("moodle_assignment_id"),
     moodleUrl: text("moodle_url"),
+    reminderAt: timestamp("reminder_at", { withTimezone: true }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },

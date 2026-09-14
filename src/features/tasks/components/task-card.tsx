@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { format, isBefore, startOfDay } from "date-fns";
 import { es } from "date-fns/locale";
-import { Archive, CalendarIcon, Ellipsis, Pencil, Trash2 } from "lucide-react";
+import { Archive, BellRing, CalendarIcon, Ellipsis, Pencil, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -179,6 +179,17 @@ export function TaskCard({ task, categories = [], onEdit }: TaskCardProps) {
             {format(new Date(task.dueDate), "d MMM yyyy", { locale: es })}
           </span>
         )}
+
+        {task.reminderAt &&
+          task.status !== "completed" &&
+          task.status !== "cancelled" && (
+            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+              <BellRing className="size-3" />
+              {format(new Date(task.reminderAt), "d MMM yyyy HH:mm", {
+                locale: es,
+              })}
+            </span>
+          )}
       </CardContent>
     </Card>
   );

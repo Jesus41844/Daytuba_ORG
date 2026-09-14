@@ -293,6 +293,7 @@ export async function syncMoodlePlatform(
             ...taskData,
             startDate: toDateOrNull(taskData.startDate),
             dueDate: toDateOrNull(taskData.dueDate),
+            reminderAt: toDateOrNull(taskData.reminderAt),
             completedAt: null,
             sortOrder: await getNextTaskSortOrder(session.uid),
           });

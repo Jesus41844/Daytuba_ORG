@@ -90,6 +90,7 @@ export async function createTask(
         recurrence:
           parsed.data.recurrence === "none" ? null : parsed.data.recurrence,
         sortOrder: await getNextSortOrder(session.uid),
+        reminderAt: toDateOrNull(parsed.data.reminderAt ?? null),
         categories: parsed.data.categories ?? [],
         source: "manual",
       })
@@ -151,6 +152,8 @@ export async function updateTask(
       values.pdfUrl = parsed.data.pdfUrl ?? null;
     if (parsed.data.pdfName !== undefined)
       values.pdfName = parsed.data.pdfName ?? null;
+    if (parsed.data.reminderAt !== undefined)
+      values.reminderAt = toDateOrNull(parsed.data.reminderAt ?? null);
 
     values.updatedAt = new Date();
 
@@ -181,6 +184,32 @@ export async function deleteTask(id: string): Promise<ActionResult> {
     revalidatePath("/dashboard/inbox");
     revalidatePath("/dashboard");
     return { success: true, data: undefined };
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
+export async function updateTaskStatus(
+  id: string,
+  status: Task["status"]
+): Promise<ActionResult<Task>> {
+  try {
+    await findUserTask(id);
+
+    const updated = await db
+      .update(tasks)
+      .set({
+        status,
+        completedAt: status === "completed" ? new Date() : null,
+        updatedAt: new Date(),
+      })
+      .where(eq(tasks.id, id))
+      .returning();
+
+    revalidatePath("/dashboard/tasks");
+    revalidatePath(`/dashboard/tasks/${id}`);
+    revalidatePath("/dashboard");
+    return { success: true, data: mapTask(updated[0]!) };
   } catch (error) {
     return toActionError(error);
   }
