@@ -51,3 +51,4 @@ scripts/migration-data.json
 
 # backups de base de datos (contienen datos sensibles)
 /backup-*.sql
+.env*

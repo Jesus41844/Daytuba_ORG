@@ -31,8 +31,10 @@ import {
   parseSchedulePdf,
 } from "@/features/schedule/actions";
 import type { ParsedScheduleEntry } from "@/lib/schedule-pdf";
+import { uploadPdfToBlob } from "@/lib/blob-client";
+import { schedulePdfPathname } from "@/lib/blob-paths";
 import {
-  uploadScheduleBlockPdf,
+  confirmScheduleBlockPdfUpload,
   deleteScheduleBlockPdf,
 } from "@/features/files/actions";
 
@@ -434,7 +436,13 @@ function BlockRow({
     if (!file) return;
     setUploading(true);
     try {
-      const result = await uploadScheduleBlockPdf(block.id, file);
+      const result = await uploadPdfToBlob({
+        file,
+        pathname: schedulePdfPathname(block.id, file.name),
+        clientPayload: JSON.stringify({ kind: "schedule", id: block.id }),
+        confirm: (url, name) =>
+          confirmScheduleBlockPdfUpload(block.id, url, name),
+      });
       if (result.success) {
         onUpdated({
           ...block,

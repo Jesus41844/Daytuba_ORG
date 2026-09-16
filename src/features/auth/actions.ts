@@ -1,8 +1,6 @@
 "use server";
 
 import { compare, hash } from "bcryptjs";
-import { mkdir, readdir, unlink } from "node:fs/promises";
-import path from "node:path";
 import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -16,12 +14,13 @@ import {
   destroyCurrentSession,
   requireSession,
 } from "@/lib/auth/session";
+import { deleteBlobUrl, IMAGE_MAX_SIZE_BYTES, putPublic } from "@/lib/blob";
 import type { ActionResult } from "@/lib/errors";
 import { loginSchema, registerSchema } from "@/lib/validations";
 
 const BCRYPT_ROUNDS = 12;
 const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
-const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5 MB
+const MAX_IMAGE_SIZE = IMAGE_MAX_SIZE_BYTES;
 const PHOTO_SIZE = 256;
 
 const profileSchema = z.object({
@@ -33,32 +32,6 @@ const changePasswordSchema = z.object({
   currentPassword: z.string().min(1),
   newPassword: z.string().min(6, "La contraseña debe tener al menos 6 caracteres"),
 });
-
-function uploadsRoot(): string {
-  const configured = process.env.UPLOADS_DIR;
-  if (!configured) throw new Error("UPLOADS_DIR no está configurada");
-  return path.resolve(configured);
-}
-
-function profilesDir(): string {
-  return path.resolve(uploadsRoot(), "profiles");
-}
-
-async function removeExistingPhoto(userId: string): Promise<void> {
-  const dir = profilesDir();
-  try {
-    const files = await readdir(dir);
-    for (const file of files) {
-      const ext = path.extname(file);
-      const base = path.basename(file, ext);
-      if (base === userId) {
-        await unlink(path.join(dir, file)).catch(() => {});
-      }
-    }
-  } catch {
-    // directory may not exist yet
-  }
-}
 
 export async function login(
   email: string,
@@ -254,26 +227,26 @@ export async function uploadProfilePhoto(
     if (file.size > MAX_IMAGE_SIZE) {
       return {
         success: false,
-        error: "La imagen no puede superar 5 MB.",
+        error: "La imagen no puede superar 4 MB.",
       };
     }
 
-    const dir = profilesDir();
-    await mkdir(dir, { recursive: true });
-
     const buffer = Buffer.from(await file.arrayBuffer());
 
-    const ext = file.type === "image/png" ? "png" : "webp";
-    const fileName = `${session.uid}.${ext}`;
-    const filePath = path.join(dir, fileName);
-
-    await removeExistingPhoto(session.uid);
-
-    await sharp(buffer)
+    const resized = await sharp(buffer)
       .resize(PHOTO_SIZE, PHOTO_SIZE, { fit: "cover", position: "centre" })
-      .toFile(filePath);
+      .webp()
+      .toBuffer();
 
-    const photoUrl = `/api/files/profiles/${session.uid}`;
+    const key = `uploads/profiles/${session.uid}.webp`;
+    const photoUrl = await putPublic(key, resized, "image/webp");
+
+    const prev = await db
+      .select({ photoUrl: users.photoUrl })
+      .from(users)
+      .where(eq(users.id, session.uid))
+      .limit(1);
+    await deleteBlobUrl(prev[0]?.photoUrl ?? null);
 
     await db
       .update(users)
@@ -293,7 +266,12 @@ export async function deleteProfilePhoto(): Promise<ActionResult<void>> {
   try {
     const session = await requireSession();
 
-    await removeExistingPhoto(session.uid);
+    const prev = await db
+      .select({ photoUrl: users.photoUrl })
+      .from(users)
+      .where(eq(users.id, session.uid))
+      .limit(1);
+    await deleteBlobUrl(prev[0]?.photoUrl ?? null);
 
     await db
       .update(users)

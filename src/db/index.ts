@@ -16,7 +16,8 @@ const globalForDb = globalThis as unknown as {
 
 function createClient() {
   return postgres(connectionString!, {
-    max: 10,
+    max: 4,
+    prepare: false,
     idle_timeout: 20,
     connect_timeout: 10,
   });

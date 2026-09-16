@@ -18,7 +18,9 @@ import {
 import type { Project, Task, Category } from "@/types";
 import { createTaskSchema, type CreateTaskInput } from "@/lib/validations";
 import { createTask } from "../actions";
-import { uploadTaskPdf } from "@/features/files/actions";
+import { uploadPdfToBlob } from "@/lib/blob-client";
+import { taskPdfPathname } from "@/lib/blob-paths";
+import { confirmTaskPdfUpload } from "@/features/files/actions";
 
 type CreateTaskFormProps = {
   projects: Project[];
@@ -114,7 +116,13 @@ export function CreateTaskForm({
       }
 
       if (selectedFile) {
-        const uploadResult = await uploadTaskPdf(result.data.id, selectedFile);
+        const taskId = result.data.id;
+        const uploadResult = await uploadPdfToBlob({
+          file: selectedFile,
+          pathname: taskPdfPathname(taskId, selectedFile.name),
+          clientPayload: JSON.stringify({ kind: "task", id: taskId }),
+          confirm: (url, name) => confirmTaskPdfUpload(taskId, url, name),
+        });
         if (!uploadResult.success) {
           console.warn("PDF upload failed:", uploadResult.error);
         }

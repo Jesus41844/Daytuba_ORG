@@ -2,8 +2,10 @@
 
 import { useState, useRef } from "react";
 import { Upload, FileText, X, Loader2 } from "lucide-react";
+import { uploadPdfToBlob } from "@/lib/blob-client";
+import { taskPdfPathname } from "@/lib/blob-paths";
 import { Button } from "@/components/ui/button";
-import { uploadTaskPdf, deleteTaskPdf } from "@/features/files/actions";
+import { confirmTaskPdfUpload, deleteTaskPdf } from "@/features/files/actions";
 import { parsePdf, type ParsedPdf } from "@/lib/pdf";
 
 interface PdfUploadProps {
@@ -34,9 +36,14 @@ export function PdfUpload({
     setUploading(true);
 
     try {
-      const result = await uploadTaskPdf(taskId, file);
+      const result = await uploadPdfToBlob({
+        file,
+        pathname: taskPdfPathname(taskId, file.name),
+        clientPayload: JSON.stringify({ kind: "task", id: taskId }),
+        confirm: (url, name) => confirmTaskPdfUpload(taskId, url, name),
+      });
       if (!result.success) {
-        setError(result.error);
+        setError(result.error ?? "Error al subir el PDF");
         return;
       }
 

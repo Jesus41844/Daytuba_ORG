@@ -46,11 +46,11 @@ export function ProfileForm({
   function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 5 * 1024 * 1024) {
+    if (file.size > 4 * 1024 * 1024) {
       toast.add({
         type: "error",
         title: "Imagen demasiado grande",
-        description: "La imagen no puede superar 5 MB.",
+        description: "La imagen no puede superar 4 MB.",
       });
       return;
     }
