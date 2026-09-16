@@ -7,7 +7,15 @@ function getKey(): Buffer {
   if (!KEY_HEX) {
     throw new Error("MOODLE_ENCRYPTION_KEY no está configurada en .env.local");
   }
-  return Buffer.from(KEY_HEX, "hex");
+  const raw = KEY_HEX.replace(/^"|"$/g, "");
+  const buf = Buffer.from(raw, "hex");
+  if (buf.length !== 32) {
+    throw new Error(
+      `MOODLE_ENCRYPTION_KEY inválida: esperaba 32 bytes (64 hex) pero obtuvo ${buf.length}. ` +
+      `Valor actual="${raw.slice(0, 4)}…${raw.slice(-4)}" (len=${raw.length}).`
+    );
+  }
+  return buf;
 }
 
 export function encrypt(plaintext: string): { ciphertext: string; iv: string; tag: string } {
