@@ -31,6 +31,7 @@ type EditTaskFormProps = {
   projects: Project[];
   allCategories: Category[];
   taskCategories: Category[];
+  readOnly?: boolean;
 };
 
 const STATUS_ITEMS = [
@@ -53,6 +54,7 @@ export function EditTaskForm({
   projects,
   allCategories,
   taskCategories: initialTaskCategories,
+  readOnly = false,
 }: EditTaskFormProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -132,6 +134,7 @@ export function EditTaskForm({
             <Input
               id="edit-title"
               placeholder="Título de la tarea"
+              disabled={readOnly}
               {...form.register("title")}
             />
             {form.formState.errors.title && (
@@ -147,6 +150,7 @@ export function EditTaskForm({
               id="edit-description"
               placeholder="Descripción opcional..."
               rows={3}
+              disabled={readOnly}
               {...form.register("description")}
             />
           </div>
@@ -156,6 +160,7 @@ export function EditTaskForm({
               <Label>Estado</Label>
               <Select
                 value={watchedStatus}
+                disabled={readOnly}
                 onValueChange={(v) =>
                   v && form.setValue("status", v as Task["status"])
                 }
@@ -177,6 +182,7 @@ export function EditTaskForm({
               <Label>Prioridad</Label>
               <Select
                 value={watchedPriority}
+                disabled={readOnly}
                 onValueChange={(v) =>
                   v && form.setValue("priority", v as Task["priority"])
                 }
@@ -198,6 +204,7 @@ export function EditTaskForm({
               <Label>Proyecto</Label>
               <Select
                 value={watchedProjectId ?? ""}
+                disabled={readOnly}
                 onValueChange={(v) => form.setValue("projectId", v ?? "")}
               >
                 <SelectTrigger>
@@ -218,6 +225,7 @@ export function EditTaskForm({
               <Input
                 id="edit-dueDate"
                 type="date"
+                disabled={readOnly}
                 {...form.register("dueDate")}
               />
             </div>
@@ -227,6 +235,7 @@ export function EditTaskForm({
               <Input
                 id="edit-startDate"
                 type="date"
+                disabled={readOnly}
                 {...form.register("startDate")}
               />
             </div>
@@ -236,6 +245,7 @@ export function EditTaskForm({
               <Input
                 id="edit-reminderAt"
                 type="datetime-local"
+                disabled={readOnly}
                 {...form.register("reminderAt")}
               />
             </div>
@@ -244,58 +254,89 @@ export function EditTaskForm({
           {allCategories.length > 0 && (
             <div className="flex flex-col gap-2">
               <Label>Categorías</Label>
-              <div className="flex flex-wrap gap-1.5">
-                {allCategories.map((category) => (
-                  <button
-                    key={category.id}
-                    type="button"
-                    disabled={isPending}
-                    onClick={() => toggleCategory(category.id)}
-                    className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors disabled:opacity-50"
-                    style={{
-                      backgroundColor: taskCategoryIds.includes(category.id)
-                        ? category.color + "30"
-                        : "transparent",
-                      color: taskCategoryIds.includes(category.id)
-                        ? category.color
-                        : undefined,
-                      borderColor: taskCategoryIds.includes(category.id)
-                        ? category.color
-                        : undefined,
-                    }}
-                  >
-                    {category.name}
-                  </button>
-                ))}
-              </div>
+              {readOnly ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {allCategories
+                    .filter((c) => taskCategoryIds.includes(c.id))
+                    .map((category) => (
+                      <span
+                        key={category.id}
+                        className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium"
+                        style={{
+                          backgroundColor: category.color + "30",
+                          color: category.color,
+                          borderColor: category.color,
+                        }}
+                      >
+                        {category.name}
+                      </span>
+                    ))}
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-1.5">
+                  {allCategories.map((category) => (
+                    <button
+                      key={category.id}
+                      type="button"
+                      disabled={isPending}
+                      onClick={() => toggleCategory(category.id)}
+                      className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors disabled:opacity-50"
+                      style={{
+                        backgroundColor: taskCategoryIds.includes(category.id)
+                          ? category.color + "30"
+                          : "transparent",
+                        color: taskCategoryIds.includes(category.id)
+                          ? category.color
+                          : undefined,
+                        borderColor: taskCategoryIds.includes(category.id)
+                          ? category.color
+                          : undefined,
+                      }}
+                    >
+                      {category.name}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
-          <div className="flex flex-col gap-2">
-            <Label>PDF Adjunto</Label>
-            <PdfUpload
-              taskId={task.id}
-              currentPdfUrl={pdfUrl}
-              currentPdfName={pdfName}
-              onUploadComplete={(url, name) => {
-                setPdfUrl(url);
-                setPdfName(name);
-              }}
-              onDeleteComplete={() => {
-                setPdfUrl(null);
-                setPdfName(null);
-              }}
-            />
-          </div>
+          {!readOnly && (
+            <div className="flex flex-col gap-2">
+              <Label>PDF Adjunto</Label>
+              <PdfUpload
+                taskId={task.id}
+                currentPdfUrl={pdfUrl}
+                currentPdfName={pdfName}
+                onUploadComplete={(url, name) => {
+                  setPdfUrl(url);
+                  setPdfName(name);
+                }}
+                onDeleteComplete={() => {
+                  setPdfUrl(null);
+                  setPdfName(null);
+                }}
+              />
+            </div>
+          )}
+
+          {readOnly && (
+            <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
+              Vista de solo lectura: este proyecto fue compartido contigo sin
+              permisos de edición.
+            </p>
+          )}
 
           {error && <p className="text-xs text-destructive">{error}</p>}
 
-          <div className="flex justify-end">
-            <Button type="submit" size="sm" disabled={isPending}>
-              {isPending && <Loader2 className="size-4 animate-spin" />}
-              Guardar cambios
-            </Button>
-          </div>
+          {!readOnly && (
+            <div className="flex justify-end">
+              <Button type="submit" size="sm" disabled={isPending}>
+                {isPending && <Loader2 className="size-4 animate-spin" />}
+                Guardar cambios
+              </Button>
+            </div>
+          )}
         </form>
       </CardContent>
     </Card>

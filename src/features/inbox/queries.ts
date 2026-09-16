@@ -7,6 +7,7 @@ import { mapTask } from "@/db/mappers";
 import { tasks } from "@/db/schema";
 import type { Task } from "@/types";
 import { requireSession } from "@/lib/auth/session";
+import { buildTaskVisibility, getAccessibleProjectIds } from "@/lib/access";
 
 export type InboxTask = Task;
 
@@ -19,12 +20,16 @@ const PRIORITY_RANK: Record<Task["priority"], number> = {
 
 export async function getInbox(): Promise<InboxTask[]> {
   const session = await requireSession();
+  const accessibleProjects = await getAccessibleProjectIds(session);
 
   const rows = await db
     .select()
     .from(tasks)
     .where(
-      and(eq(tasks.userId, session.uid), eq(tasks.isArchived, false))
+      and(
+        buildTaskVisibility(session.uid, accessibleProjects),
+        eq(tasks.isArchived, false)
+      )
     );
 
   const inboxTasks = rows.map(mapTask).filter(

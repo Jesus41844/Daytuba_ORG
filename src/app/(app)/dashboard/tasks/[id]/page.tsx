@@ -7,6 +7,9 @@ import { getSession } from "@/lib/auth/session";
 import { getTaskById } from "@/features/tasks/queries";
 import { getUserProjects } from "@/features/projects/queries";
 import { getUserCategories, getTaskCategories } from "@/features/categories/queries";
+import { getProjectAccess } from "@/lib/access";
+import { getTaskComments } from "@/features/comments/queries";
+import { TaskComments } from "@/features/comments/components/task-comments";
 import { EditTaskForm } from "@/features/tasks/components/edit-task-form";
 import { PageHeader } from "@/components/layout/page-header";
 import { Badge } from "@/components/ui/badge";
@@ -67,11 +70,19 @@ export default async function TaskDetailPage({
   const task = await getTaskById(id);
   if (!task) notFound();
 
-  const [projects, allCategories, taskCategories] = await Promise.all([
+  const [projects, allCategories, taskCategories, taskComments] = await Promise.all([
     getUserProjects(),
     getUserCategories(),
     getTaskCategories(id),
+    getTaskComments(id),
   ]);
+
+  let canEdit = true;
+  if (task.projectId && task.userId !== session.uid) {
+    const access = await getProjectAccess(task.projectId, session);
+    canEdit = access?.readWrite ?? false;
+  }
+  const canComment = canEdit || task.userId === session.uid;
 
   return (
     <div className="flex flex-col gap-4 sm:gap-6">
@@ -88,13 +99,24 @@ export default async function TaskDetailPage({
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
-        <div className="lg:col-span-2">
+        <div className="flex flex-col gap-4 lg:col-span-2">
           <EditTaskForm
             task={task}
             projects={projects}
             allCategories={allCategories}
             taskCategories={taskCategories}
+            readOnly={!canEdit}
           />
+          <Card>
+            <CardContent className="p-4 sm:p-6">
+              <TaskComments
+                taskId={task.id}
+                comments={taskComments}
+                currentUserId={session.uid}
+                canComment={canComment}
+              />
+            </CardContent>
+          </Card>
         </div>
 
         <div className="flex flex-col gap-4">

@@ -6,5 +6,7 @@ export type {
   TaskSource,
   MoodlePlatform,
   Project,
+  ProjectMemberRole,
   Category,
+  TaskComment,
 } from "./task";

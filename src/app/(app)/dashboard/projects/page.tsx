@@ -26,7 +26,11 @@ export default async function ProjectsPage() {
         title="Proyectos"
         description="Organiza tus tareas en proyectos o fases de trabajo."
       />
-      <ProjectList projects={projects} tasks={tasks} />
+      <ProjectList
+        projects={projects}
+        tasks={tasks}
+        currentUserId={session.uid}
+      />
     </div>
   );
 }

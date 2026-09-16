@@ -7,6 +7,7 @@ import { mapCategory } from "@/db/mappers";
 import { categories, tasks } from "@/db/schema";
 import type { Category } from "@/types";
 import { requireSession } from "@/lib/auth/session";
+import { canAccessTask } from "@/lib/access";
 import { NotFoundError } from "@/lib/errors";
 
 export async function getUserCategories(): Promise<Category[]> {
@@ -25,13 +26,14 @@ export async function getTaskCategories(taskId: string): Promise<Category[]> {
   const session = await requireSession();
 
   const taskRows = await db
-    .select({ userId: tasks.userId, categories: tasks.categories })
+    .select({ userId: tasks.userId, projectId: tasks.projectId, categories: tasks.categories })
     .from(tasks)
     .where(eq(tasks.id, taskId))
     .limit(1);
 
   const task = taskRows[0];
-  if (!task || task.userId !== session.uid) throw new NotFoundError("La tarea");
+  if (!task) throw new NotFoundError("La tarea");
+  if (!(await canAccessTask(task, session))) throw new NotFoundError("La tarea");
 
   const categoryIds = (task.categories ?? []).filter(
     (id) => typeof id === "string"

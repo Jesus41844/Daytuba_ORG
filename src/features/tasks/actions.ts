@@ -10,6 +10,11 @@ import { tasks } from "@/db/schema";
 import type { Task } from "@/types";
 import { requireSession } from "@/lib/auth/session";
 import {
+  getAccessibleProjectIds,
+  getProjectAccess,
+  requireTaskAccess,
+} from "@/lib/access";
+import {
   type ActionResult,
   AppError,
   NotFoundError,
@@ -37,7 +42,7 @@ function validationResult(error: z.ZodError): ActionResult<never> {
   };
 }
 
-async function findUserTask(id: string) {
+async function findUserTask(id: string, opts: { write?: boolean } = {}) {
   const session = await requireSession();
 
   const rows = await db
@@ -47,9 +52,11 @@ async function findUserTask(id: string) {
     .limit(1);
 
   const row = rows[0];
-  if (!row || row.userId !== session.uid) throw new NotFoundError("La tarea");
+  if (!row) throw new NotFoundError("La tarea");
 
-  return row;
+  await requireTaskAccess(row, { write: opts.write });
+
+  return { session, row };
 }
 
 async function getNextSortOrder(userId: string): Promise<number> {
@@ -71,6 +78,23 @@ export async function createTask(
 
     const parsed = createTaskSchema.safeParse(data);
     if (!parsed.success) return validationResult(parsed.error);
+
+    if (parsed.data.projectId) {
+      const accessible = await getAccessibleProjectIds(session);
+      if (!accessible.includes(parsed.data.projectId)) {
+        return {
+          success: false,
+          error: "No tienes acceso a este proyecto",
+        };
+      }
+      const access = await getProjectAccess(parsed.data.projectId, session);
+      if (!access || !access.readWrite) {
+        return {
+          success: false,
+          error: "No tienes permisos de edición en este proyecto",
+        };
+      }
+    }
 
     const inserted = await db
       .insert(tasks)
@@ -114,7 +138,18 @@ export async function updateTask(
     const parsed = updateTaskSchema.safeParse(data);
     if (!parsed.success) return validationResult(parsed.error);
 
-    await findUserTask(id);
+    await findUserTask(id, { write: true });
+
+    const session = await requireSession();
+    if (parsed.data.projectId !== undefined && parsed.data.projectId) {
+      const accessible = await getAccessibleProjectIds(session);
+      if (!accessible.includes(parsed.data.projectId)) {
+        return {
+          success: false,
+          error: "No tienes acceso a este proyecto",
+        };
+      }
+    }
 
     const values: Partial<typeof tasks.$inferInsert> = {};
 
@@ -176,7 +211,7 @@ export async function updateTask(
 
 export async function deleteTask(id: string): Promise<ActionResult> {
   try {
-    await findUserTask(id);
+    await findUserTask(id, { write: true });
     await db.delete(tasks).where(eq(tasks.id, id));
 
     revalidatePath("/dashboard/tasks");
@@ -194,7 +229,7 @@ export async function updateTaskStatus(
   status: Task["status"]
 ): Promise<ActionResult<Task>> {
   try {
-    await findUserTask(id);
+    await findUserTask(id, { write: true });
 
     const updated = await db
       .update(tasks)
@@ -217,7 +252,7 @@ export async function updateTaskStatus(
 
 export async function restoreTask(id: string): Promise<ActionResult<Task>> {
   try {
-    await findUserTask(id);
+    await findUserTask(id, { write: true });
 
     const updated = await db
       .update(tasks)

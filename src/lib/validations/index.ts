@@ -21,7 +21,7 @@ export const registerSchema = z.object({
 export const createTaskSchema = z.object({
   title: z.string().min(1, "El título es requerido").max(500),
   description: z.string().max(5000).optional(),
-  projectId: z.string().optional(),
+  projectId: z.string().min(1).optional(),
   priority: z
     .enum(["low", "medium", "high", "urgent"])
     .default("medium"),
@@ -58,9 +58,33 @@ export const createCategorySchema = z.object({
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/, "Color inválido").optional(),
 });
 
+export const inviteMemberSchema = z.object({
+  projectId: z.string().min(1),
+  email: z.string().email("Email inválido"),
+  role: z.enum(["viewer", "editor"]).default("viewer"),
+});
+
+export const updateMemberRoleSchema = z.object({
+  projectId: z.string().min(1),
+  memberUserId: z.string().min(1),
+  role: z.enum(["viewer", "editor"]),
+});
+
+export const createCommentSchema = z.object({
+  taskId: z.string().min(1),
+  body: z
+    .string()
+    .trim()
+    .min(1, "El comentario no puede estar vacío")
+    .max(2000),
+});
+
 export type LoginInput = z.infer<typeof loginSchema>;
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type CreateTaskInput = z.infer<typeof createTaskSchema>;
 export type UpdateTaskInput = z.infer<typeof updateTaskSchema>;
 export type CreateProjectInput = z.infer<typeof createProjectSchema>;
 export type CreateCategoryInput = z.infer<typeof createCategorySchema>;
+export type InviteMemberInput = z.infer<typeof inviteMemberSchema>;
+export type UpdateMemberRoleInput = z.infer<typeof updateMemberRoleSchema>;
+export type CreateCommentInput = z.infer<typeof createCommentSchema>;

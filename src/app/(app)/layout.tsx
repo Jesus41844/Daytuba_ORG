@@ -6,6 +6,7 @@ import { Sidebar } from "@/components/layout/sidebar";
 import { SidebarProvider } from "@/components/layout/sidebar-provider";
 import { ToasterWrapper } from "@/components/providers/toaster-wrapper";
 import { ReminderProvider } from "@/components/providers/reminder-provider";
+import { PushProvider } from "@/components/providers/push-provider";
 import { SidebarWidthUpdater } from "@/components/layout/sidebar-width-updater";
 
 export default async function AppLayout({
@@ -28,6 +29,7 @@ export default async function AppLayout({
         </div>
         <ToasterWrapper />
         <ReminderProvider />
+        <PushProvider />
       </div>
     </SidebarProvider>
   );

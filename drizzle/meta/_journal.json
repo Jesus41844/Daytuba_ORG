@@ -15,6 +15,13 @@
       "when": 1789387917399,
       "tag": "0001_certain_warhawk",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1789587229865,
+      "tag": "0002_collaboration",
+      "breakpoints": true
     }
   ]
 }

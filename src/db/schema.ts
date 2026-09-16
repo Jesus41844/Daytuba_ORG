@@ -5,6 +5,7 @@ import {
   index,
   integer,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -12,6 +13,7 @@ import {
 
 import type {
   MoodlePlatform,
+  ProjectMemberRole,
   TaskPriority,
   TaskRecurrence,
   TaskSource,
@@ -206,6 +208,66 @@ export const moodleCredentials = pgTable(
   ]
 );
 
+export const projectMembers = pgTable(
+  "project_members",
+  {
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    role: text("role").$type<ProjectMemberRole>().notNull().default("viewer"),
+    invitedBy: text("invited_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.projectId, table.userId] }),
+    index("project_members_user_idx").on(table.userId),
+  ]
+);
+
+export const taskComments = pgTable(
+  "task_comments",
+  {
+    id: id(),
+    taskId: text("task_id")
+      .notNull()
+      .references(() => tasks.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    body: text("body").notNull(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    index("task_comments_task_idx").on(table.taskId),
+    index("task_comments_user_idx").on(table.userId),
+  ]
+);
+
+export const pushSubscriptions = pgTable(
+  "push_subscriptions",
+  {
+    id: id(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    endpoint: text("endpoint").notNull(),
+    p256dh: text("p256dh").notNull(),
+    auth: text("auth").notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex("push_subscriptions_endpoint_unique").on(table.endpoint),
+    index("push_subscriptions_user_idx").on(table.userId),
+  ]
+);
+
 export const usersRelations = relations(users, ({ many }) => ({
   sessions: many(sessions),
   projects: many(projects),
@@ -214,20 +276,64 @@ export const usersRelations = relations(users, ({ many }) => ({
   calendarEvents: many(calendarEvents),
   scheduleBlocks: many(scheduleBlocks),
   moodleCredentials: many(moodleCredentials),
+  projectMemberships: many(projectMembers),
+  taskComments: many(taskComments),
+  pushSubscriptions: many(pushSubscriptions),
 }));
 
 export const projectsRelations = relations(projects, ({ one, many }) => ({
   user: one(users, { fields: [projects.userId], references: [users.id] }),
   tasks: many(tasks),
+  members: many(projectMembers),
 }));
 
-export const tasksRelations = relations(tasks, ({ one }) => ({
+export const projectMembersRelations = relations(
+  projectMembers,
+  ({ one }) => ({
+    project: one(projects, {
+      fields: [projectMembers.projectId],
+      references: [projects.id],
+    }),
+    user: one(users, {
+      fields: [projectMembers.userId],
+      references: [users.id],
+    }),
+    inviter: one(users, {
+      fields: [projectMembers.invitedBy],
+      references: [users.id],
+    }),
+  })
+);
+
+export const tasksRelations = relations(tasks, ({ one, many }) => ({
   user: one(users, { fields: [tasks.userId], references: [users.id] }),
   project: one(projects, {
     fields: [tasks.projectId],
     references: [projects.id],
   }),
+  comments: many(taskComments),
 }));
+
+export const taskCommentsRelations = relations(taskComments, ({ one }) => ({
+  task: one(tasks, {
+    fields: [taskComments.taskId],
+    references: [tasks.id],
+  }),
+  author: one(users, {
+    fields: [taskComments.userId],
+    references: [users.id],
+  }),
+}));
+
+export const pushSubscriptionsRelations = relations(
+  pushSubscriptions,
+  ({ one }) => ({
+    user: one(users, {
+      fields: [pushSubscriptions.userId],
+      references: [users.id],
+    }),
+  })
+);
 
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
@@ -238,3 +344,6 @@ export type TaskRow = typeof tasks.$inferSelect;
 export type CalendarEventRow = typeof calendarEvents.$inferSelect;
 export type ScheduleBlockRow = typeof scheduleBlocks.$inferSelect;
 export type MoodleCredentialRow = typeof moodleCredentials.$inferSelect;
+export type ProjectMemberRow = typeof projectMembers.$inferSelect;
+export type TaskCommentRow = typeof taskComments.$inferSelect;
+export type PushSubscriptionRow = typeof pushSubscriptions.$inferSelect;

@@ -16,6 +16,8 @@ export type TaskRecurrence =
 export type TaskSource = "manual" | "moodle";
 export type MoodlePlatform = "ecampus" | "campusvirtual" | "virtualutp";
 
+export type ProjectMemberRole = "viewer" | "editor";
+
 export interface Task {
   id: string;
   userId: string;
@@ -70,4 +72,15 @@ export interface Category {
   name: string;
   color: string;
   createdAt: string;
+}
+
+export interface TaskComment {
+  id: string;
+  taskId: string;
+  userId: string;
+  authorName: string;
+  authorEmail: string;
+  body: string;
+  createdAt: string;
+  updatedAt: string;
 }

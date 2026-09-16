@@ -23,6 +23,7 @@ import type { Project, Task } from "@/types";
 import { createProject, updateProject, deleteProject } from "../actions";
 import { unlinkMoodleProject } from "@/features/moodle/actions";
 import { TaskCard } from "@/features/tasks/components/task-card";
+import { ShareProjectDialog } from "@/features/collaboration/components/share-project-dialog";
 
 const PROJECT_COLORS = [
   "#6366f1",
@@ -42,9 +43,10 @@ const PROJECT_COLORS = [
 type ProjectListProps = {
   projects: Project[];
   tasks: Task[];
+  currentUserId: string;
 };
 
-export function ProjectList({ projects, tasks }: ProjectListProps) {
+export function ProjectList({ projects, tasks, currentUserId }: ProjectListProps) {
   const router = useRouter();
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [isAdding, setIsAdding] = useState(false);
@@ -228,7 +230,7 @@ export function ProjectList({ projects, tasks }: ProjectListProps) {
             )}
           </button>
 
-          {editingId !== id && project && (
+          {editingId !== id && project && project.userId === currentUserId && (
             <div className="flex shrink-0 gap-0.5">
               {project.moodleCourseId && (
                 <Button
@@ -247,6 +249,7 @@ export function ProjectList({ projects, tasks }: ProjectListProps) {
                   )}
                 </Button>
               )}
+              <ShareProjectDialog project={project} isOwner />
               <Button
                 variant="ghost"
                 size="icon"

@@ -18,6 +18,11 @@ import { mapTask } from "@/db/mappers";
 import { tasks } from "@/db/schema";
 import type { Task } from "@/types";
 import { requireSession } from "@/lib/auth/session";
+import {
+  buildTaskVisibility,
+  canAccessTask,
+  getAccessibleProjectIds,
+} from "@/lib/access";
 
 const REMINDER_WINDOW_MS = 10 * 60 * 1000;
 
@@ -32,9 +37,10 @@ export async function getUserTasks(
   filters?: TaskFilters
 ): Promise<Task[]> {
   const session = await requireSession();
+  const accessibleProjects = await getAccessibleProjectIds(session);
 
   const conditions = [
-    eq(tasks.userId, session.uid),
+    buildTaskVisibility(session.uid, accessibleProjects),
     eq(tasks.isArchived, false),
   ];
 
@@ -71,20 +77,22 @@ export async function getTaskById(taskId: string): Promise<Task | null> {
     .limit(1);
 
   const row = rows[0];
-  if (!row || row.userId !== session.uid) return null;
+  if (!row) return null;
+  if (!(await canAccessTask(row, session))) return null;
   return mapTask(row);
 }
 
 export async function getOverdueTasks(): Promise<Task[]> {
   const session = await requireSession();
   const now = new Date();
+  const accessibleProjects = await getAccessibleProjectIds(session);
 
   const rows = await db
     .select()
     .from(tasks)
     .where(
       and(
-        eq(tasks.userId, session.uid),
+        buildTaskVisibility(session.uid, accessibleProjects),
         eq(tasks.isArchived, false),
         lt(tasks.dueDate, now),
         notInArray(tasks.status, ["completed", "cancelled"])
@@ -97,12 +105,16 @@ export async function getOverdueTasks(): Promise<Task[]> {
 
 export async function getArchivedTasks(): Promise<Task[]> {
   const session = await requireSession();
+  const accessibleProjects = await getAccessibleProjectIds(session);
 
   const rows = await db
     .select()
     .from(tasks)
     .where(
-      and(eq(tasks.userId, session.uid), eq(tasks.isArchived, true))
+      and(
+        buildTaskVisibility(session.uid, accessibleProjects),
+        eq(tasks.isArchived, true)
+      )
     )
     .orderBy(desc(tasks.updatedAt));
 
@@ -111,13 +123,14 @@ export async function getArchivedTasks(): Promise<Task[]> {
 
 export async function getTasksForCalendar(): Promise<Task[]> {
   const session = await requireSession();
+  const accessibleProjects = await getAccessibleProjectIds(session);
 
   const rows = await db
     .select()
     .from(tasks)
     .where(
       and(
-        eq(tasks.userId, session.uid),
+        buildTaskVisibility(session.uid, accessibleProjects),
         eq(tasks.isArchived, false),
         gt(tasks.dueDate, new Date(0))
       )
@@ -131,13 +144,14 @@ export async function getTasksForCalendar(): Promise<Task[]> {
 
 export async function getTasksWithReminders(): Promise<Task[]> {
   const session = await requireSession();
+  const accessibleProjects = await getAccessibleProjectIds(session);
 
   const rows = await db
     .select()
     .from(tasks)
     .where(
       and(
-        eq(tasks.userId, session.uid),
+        buildTaskVisibility(session.uid, accessibleProjects),
         eq(tasks.isArchived, false),
         isNotNull(tasks.reminderAt),
         gt(tasks.reminderAt, new Date(Date.now() - REMINDER_WINDOW_MS)),
@@ -155,13 +169,14 @@ export async function searchTasks(query: string): Promise<Task[]> {
   if (!term) return [];
 
   const pattern = `%${term}%`;
+  const accessibleProjects = await getAccessibleProjectIds(session);
 
   const rows = await db
     .select()
     .from(tasks)
     .where(
       and(
-        eq(tasks.userId, session.uid),
+        buildTaskVisibility(session.uid, accessibleProjects),
         eq(tasks.isArchived, false),
         or(ilike(tasks.title, pattern), ilike(tasks.description, pattern))
       )

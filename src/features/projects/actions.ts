@@ -14,6 +14,7 @@ import {
   AppError,
   NotFoundError,
 } from "@/lib/errors";
+import { requireProjectAccess } from "@/lib/access";
 import {
   createProjectSchema,
   type CreateProjectInput,
@@ -45,7 +46,9 @@ async function findUserProject(id: string) {
     .limit(1);
 
   const row = rows[0];
-  if (!row || row.userId !== session.uid) throw new NotFoundError("El proyecto");
+  if (!row) throw new NotFoundError("El proyecto");
+
+  await requireProjectAccess(row.id, { write: true });
 
   return { session, row };
 }
