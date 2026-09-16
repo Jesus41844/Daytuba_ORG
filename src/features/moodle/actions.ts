@@ -250,12 +250,17 @@ export async function syncMoodlePlatform(
     // Sync events → tasks (linked to projects)
     for (const event of events) {
       try {
+        const course =
+          event.courseid != null ? courseMap.get(event.courseid) : undefined;
+        const projectId =
+          event.courseid != null ? projectMap.get(event.courseid) : undefined;
+
         const taskData = moodleEventToTask(
           event,
-          courseMap.get(event.courseid),
+          course,
           platform,
           session.uid,
-          projectMap.get(event.courseid)
+          projectId
         );
 
         const existing = await db

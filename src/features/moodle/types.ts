@@ -30,7 +30,7 @@ export interface MoodleEvent {
   name: string;
   description: string;
   modulename: string;
-  courseid: number;
+  courseid: number | null;
   timestart: number;
   timedue: number | null;
   url: string;

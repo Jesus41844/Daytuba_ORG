@@ -52,7 +52,9 @@ export function moodleEventToTask(
   userId: string,
   projectId?: string | null
 ): Omit<Task, "id" | "sortOrder" | "createdAt" | "updatedAt"> {
-  const courseLabel = course?.shortname ?? `Curso ${event.courseid}`;
+  const courseLabel =
+    course?.shortname ||
+    (event.courseid == null ? "Sin curso" : `Curso ${event.courseid}`);
   const moduleLabel = MODULE_LABELS[event.modulename] ?? event.modulename;
   const dueDate = new Date(event.timestart * 1000);
 
@@ -78,7 +80,8 @@ export function moodleEventToTask(
     pdfName: null,
     reminderAt: null,
     moodlePlatform: platform,
-    moodleCourseId: String(event.courseid),
+    moodleCourseId:
+      event.courseid == null ? null : String(event.courseid),
     moodleAssignmentId: String(event.id),
     moodleUrl: event.url,
     source: "moodle",
