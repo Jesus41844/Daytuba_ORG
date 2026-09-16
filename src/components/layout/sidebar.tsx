@@ -10,6 +10,7 @@ import {
   CheckSquare,
   FolderOpen,
   CalendarDays,
+  CalendarClock,
   Inbox,
   Settings,
   Tag,
@@ -47,6 +48,7 @@ const NAV_ITEMS = [
   { label: "Proyectos", icon: FolderOpen, href: "/dashboard/projects" },
   { label: "Categorías", icon: Tag, href: "/dashboard/categories" },
   { label: "Calendario", icon: CalendarDays, href: "/dashboard/calendar" },
+  { label: "Horario", icon: CalendarClock, href: "/dashboard/schedule" },
   { label: "Bandeja", icon: Inbox, href: "/dashboard/inbox" },
   { label: "Configuración", icon: Settings, href: "/dashboard/settings" },
 ] as const;
