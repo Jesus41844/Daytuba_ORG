@@ -20,7 +20,7 @@ import type { Project } from "@/types";
 import { cn } from "@/lib/utils";
 import {
   getProjectMembers,
-  searchUserByEmail,
+  searchUsers,
   type ProjectMemberProfile,
   type UserSearchResult,
 } from "../queries";
@@ -48,6 +48,7 @@ export function ShareProjectDialog({ project, isOwner }: ShareProjectDialogProps
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<"viewer" | "editor">("viewer");
   const [suggestions, setSuggestions] = useState<UserSearchResult[]>([]);
+  const [focused, setFocused] = useState(false);
   const [pendingInvite, setPendingInvite] = useState(false);
   const [rolePending, setRolePending] = useState<string | null>(null);
   const [removePending, setRemovePending] = useState<string | null>(null);
@@ -61,12 +62,14 @@ export function ShareProjectDialog({ project, isOwner }: ShareProjectDialogProps
   }, [open, project.id]);
 
   useEffect(() => {
-    if (!email.trim() || !open) return;
+    if (!open || !focused) return;
     const timer = setTimeout(() => {
-      searchUserByEmail(email).then(setSuggestions).catch(() => setSuggestions([]));
-    }, 300);
+      searchUsers(email.trim(), project.id)
+        .then(setSuggestions)
+        .catch(() => setSuggestions([]));
+    }, 250);
     return () => clearTimeout(timer);
-  }, [email, open]);
+  }, [email, open, focused, project.id]);
 
   function refresh() {
     getProjectMembers(project.id).then(setMembers).catch(() => undefined);
@@ -151,16 +154,19 @@ export function ShareProjectDialog({ project, isOwner }: ShareProjectDialogProps
             <Label
               htmlFor={`invite-email-${project.id}`}
             >
-              Email del usuario
+              Nombre o email del usuario
             </Label>
             <div className="flex items-center gap-2">
               <div className="relative flex-1">
                 <Input
                   id={`invite-email-${project.id}`}
-                  type="email"
-                  placeholder="usuario@ejemplo.com"
+                  type="text"
+                  autoComplete="off"
+                  placeholder="nombre o usuario@ejemplo.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  onFocus={() => setFocused(true)}
+                  onBlur={() => setTimeout(() => setFocused(false), 150)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
                       e.preventDefault();
@@ -168,24 +174,35 @@ export function ShareProjectDialog({ project, isOwner }: ShareProjectDialogProps
                     }
                   }}
                 />
-                {suggestions.length > 0 && (
+                {focused && suggestions.length > 0 && (
                   <div className="absolute top-full right-0 left-0 z-10 mt-1 overflow-hidden rounded-md border bg-popover shadow-lg">
                     {suggestions.map((user) => (
                       <button
                         key={user.id}
                         type="button"
                         className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-muted"
+                        onMouseDown={(e) => e.preventDefault()}
                         onClick={() => {
                           setEmail(user.email);
                           setSuggestions([]);
+                          setFocused(false);
                         }}
                       >
                         <Avatar className="size-5">
                           <AvatarFallback className="text-[10px]">
-                            {user.displayName.slice(0, 2).toUpperCase()}
+                            {(user.displayName || user.email).slice(0, 2).toUpperCase()}
                           </AvatarFallback>
                         </Avatar>
-                        <span className="min-w-0 flex-1 truncate">{user.email}</span>
+                        <span className="min-w-0 flex-1 truncate">
+                          {user.displayName ? (
+                            <>
+                              <span className="font-medium">{user.displayName}</span>
+                              <span className="ml-2 text-muted-foreground">{user.email}</span>
+                            </>
+                          ) : (
+                            user.email
+                          )}
+                        </span>
                       </button>
                     ))}
                   </div>

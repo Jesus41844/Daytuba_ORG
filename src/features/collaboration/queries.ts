@@ -1,6 +1,6 @@
 "use server";
 
-import { asc, eq, ilike } from "drizzle-orm";
+import { and, asc, eq, ilike, notInArray, or } from "drizzle-orm";
 
 import { db } from "@/db";
 import { projectMembers, projects, users } from "@/db/schema";
@@ -75,24 +75,51 @@ export async function getProjectMembers(
   return members;
 }
 
-export async function searchUserByEmail(
-  email: string
+export async function searchUsers(
+  term: string,
+  projectId?: string
 ): Promise<UserSearchResult[]> {
   const session = await requireSession();
-  const term = email.trim().toLowerCase();
-  if (!term) return [];
+  const query = term.trim();
+
+  const excludedIds = [session.uid];
+
+  if (projectId) {
+    await requireProjectAccess(projectId);
+
+    const [ownerRows, memberRows] = await Promise.all([
+      db
+        .select({ userId: projects.userId })
+        .from(projects)
+        .where(eq(projects.id, projectId))
+        .limit(1),
+      db
+        .select({ userId: projectMembers.userId })
+        .from(projectMembers)
+        .where(eq(projectMembers.projectId, projectId)),
+    ]);
+
+    if (ownerRows[0]) excludedIds.push(ownerRows[0].userId);
+    excludedIds.push(...memberRows.map((row) => row.userId));
+  }
+
+  const searchCondition = query
+    ? or(
+        ilike(users.email, `%${query}%`),
+        ilike(users.displayName, `%${query}%`)
+      )
+    : undefined;
 
   const rows = await db
     .select({ id: users.id, email: users.email, displayName: users.displayName })
     .from(users)
-    .where(ilike(users.email, `%${term}%`))
+    .where(and(notInArray(users.id, excludedIds), searchCondition))
+    .orderBy(asc(users.email))
     .limit(10);
 
-  return rows
-    .filter((row) => row.id !== session.uid)
-    .map((row) => ({
-      id: row.id,
-      email: row.email,
-      displayName: row.displayName,
-    }));
+  return rows.map((row) => ({
+    id: row.id,
+    email: row.email,
+    displayName: row.displayName,
+  }));
 }
