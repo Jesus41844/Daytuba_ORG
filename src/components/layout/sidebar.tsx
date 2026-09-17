@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import type { Project } from "@/types";
 import type { AuthUser } from "@/lib/auth/session";
 import { logout } from "@/features/auth/actions";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -40,6 +41,7 @@ import {
 } from "@/components/ui/tooltip";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { SidebarSearch } from "@/components/layout/sidebar-search";
+import { NotificationBell } from "@/features/notifications/components/notification-bell";
 import { useSidebarWidth } from "@/components/layout/sidebar-provider";
 
 const NAV_ITEMS = [
@@ -69,9 +71,11 @@ function isActivePath(pathname: string, href: string): boolean {
 
 function SidebarNav({
   compact,
+  sharedProjects = [],
   onNavigate,
 }: {
   compact: boolean;
+  sharedProjects?: Project[];
   onNavigate?: () => void;
 }) {
   const pathname = usePathname();
@@ -110,6 +114,52 @@ function SidebarNav({
 
         return link;
       })}
+
+      {sharedProjects.length > 0 && (
+        <div className="mt-3 flex flex-col gap-0.5 border-t border-border/50 pt-3">
+          {!compact && (
+            <span className="px-4 pb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              Compartidos
+            </span>
+          )}
+          {sharedProjects.map((project) => {
+            const href = `/dashboard/projects/${project.id}`;
+            const isActive = isActivePath(pathname, href);
+            const link = (
+              <Link
+                key={href}
+                href={href}
+                onClick={onNavigate}
+                aria-current={isActive ? "page" : undefined}
+                className={cn(
+                  "flex items-center gap-3 rounded-full text-sm font-medium transition-colors",
+                  compact ? "justify-center px-0 py-2.5" : "px-4 py-2.5",
+                  isActive
+                    ? "bg-secondary text-primary font-semibold shadow-sm"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                )}
+              >
+                <span
+                  className="size-2.5 shrink-0 rounded-full"
+                  style={{ backgroundColor: project.color }}
+                />
+                {!compact && <span className="truncate">{project.name}</span>}
+              </Link>
+            );
+
+            if (compact) {
+              return (
+                <Tooltip key={href}>
+                  <TooltipTrigger render={<div />}>{link}</TooltipTrigger>
+                  <TooltipContent side="right">{project.name}</TooltipContent>
+                </Tooltip>
+              );
+            }
+
+            return link;
+          })}
+        </div>
+      )}
     </nav>
   );
 }
@@ -261,10 +311,12 @@ function ResizeHandle() {
 function SidebarBody({
   user,
   compact,
+  sharedProjects = [],
   onNavigate,
 }: {
   user: AuthUser | null;
   compact: boolean;
+  sharedProjects?: Project[];
   onNavigate?: () => void;
 }) {
   const { collapse, expand } = useSidebarWidth();
@@ -293,10 +345,18 @@ function SidebarBody({
           {!compact && (
             <>
               <span className="text-sm font-bold tracking-tight">Daytuba</span>
-              <ThemeToggle className="ml-auto size-9" />
+              <div className="ml-auto flex items-center gap-1">
+                <NotificationBell />
+                <ThemeToggle className="size-9" />
+              </div>
             </>
           )}
-          {compact && <ThemeToggle className="size-9" />}
+          {compact && (
+            <div className="flex flex-col items-center gap-2">
+              <NotificationBell compact />
+              <ThemeToggle className="size-9" />
+            </div>
+          )}
         </div>
         <Separator className="opacity-50" />
         {!compact && (
@@ -306,7 +366,11 @@ function SidebarBody({
           </>
         )}
         <ScrollArea className="flex-1 py-3">
-          <SidebarNav compact={compact} onNavigate={onNavigate} />
+          <SidebarNav
+            compact={compact}
+            sharedProjects={sharedProjects}
+            onNavigate={onNavigate}
+          />
         </ScrollArea>
         <Separator className="opacity-50" />
         <SidebarUser user={user} compact={compact} />
@@ -316,7 +380,13 @@ function SidebarBody({
   );
 }
 
-export function Sidebar({ user }: { user: AuthUser | null }) {
+export function Sidebar({
+  user,
+  sharedProjects = [],
+}: {
+  user: AuthUser | null;
+  sharedProjects?: Project[];
+}) {
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const { width, collapsed } = useSidebarWidth();
 
@@ -336,6 +406,7 @@ export function Sidebar({ user }: { user: AuthUser | null }) {
             <SidebarBody
               user={user}
               compact={false}
+              sharedProjects={sharedProjects}
               onNavigate={() => setMobileOpen(false)}
             />
           </SheetContent>
@@ -347,7 +418,11 @@ export function Sidebar({ user }: { user: AuthUser | null }) {
         className="fixed inset-y-0 left-0 z-40 hidden flex-col border-r bg-background/80 backdrop-blur-sm lg:flex"
         style={{ width: `${collapsed ? 64 : width}px` }}
       >
-        <SidebarBody user={user} compact={collapsed} />
+        <SidebarBody
+          user={user}
+          compact={collapsed}
+          sharedProjects={sharedProjects}
+        />
       </aside>
     </>
   );

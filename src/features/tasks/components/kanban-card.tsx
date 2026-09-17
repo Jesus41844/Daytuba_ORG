@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-import { CalendarIcon, GripVertical } from "lucide-react";
+import { CalendarIcon, GripVertical, UserRound } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import type { Category, Task } from "@/types";
@@ -75,6 +75,13 @@ export function KanbanCard({
           </span>
         )}
       </div>
+
+      {task.assigneeName && (
+        <span className="flex items-center gap-1 pl-5.5 text-[11px] text-muted-foreground">
+          <UserRound className="size-3" />
+          {task.assigneeName}
+        </span>
+      )}
 
       {task.dueDate && (
         <span

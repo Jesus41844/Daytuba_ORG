@@ -4,7 +4,7 @@ import { redirect, notFound } from "next/navigation";
 import { ArrowLeft, CalendarClock, Tag } from "lucide-react";
 
 import { getSession } from "@/lib/auth/session";
-import { getTaskById } from "@/features/tasks/queries";
+import { getTaskById, getAssignableUsers } from "@/features/tasks/queries";
 import { getUserProjects } from "@/features/projects/queries";
 import { getUserCategories, getTaskCategories } from "@/features/categories/queries";
 import { getProjectAccess } from "@/lib/access";
@@ -70,12 +70,14 @@ export default async function TaskDetailPage({
   const task = await getTaskById(id);
   if (!task) notFound();
 
-  const [projects, allCategories, taskCategories, taskComments] = await Promise.all([
-    getUserProjects(),
-    getUserCategories(),
-    getTaskCategories(id),
-    getTaskComments(id),
-  ]);
+  const [projects, allCategories, taskCategories, taskComments, assignees] =
+    await Promise.all([
+      getUserProjects(),
+      getUserCategories(),
+      getTaskCategories(id),
+      getTaskComments(id),
+      getAssignableUsers(task.projectId),
+    ]);
 
   let canEdit = true;
   if (task.projectId && task.userId !== session.uid) {
@@ -105,6 +107,7 @@ export default async function TaskDetailPage({
             projects={projects}
             allCategories={allCategories}
             taskCategories={taskCategories}
+            assignees={assignees}
             readOnly={!canEdit}
           />
           <Card>

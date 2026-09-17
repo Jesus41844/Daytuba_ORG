@@ -22,6 +22,13 @@
       "when": 1789587229865,
       "tag": "0002_collaboration",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1789676061069,
+      "tag": "0003_special_sabra",
+      "breakpoints": true
     }
   ]
 }

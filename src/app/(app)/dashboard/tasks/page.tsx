@@ -1,10 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Archive, Kanban, List } from "lucide-react";
+import { Archive, Kanban, List, UserRound } from "lucide-react";
 
 import { getSession } from "@/lib/auth/session";
-import { getUserTasks, type TaskFilters } from "@/features/tasks/queries";
+import {
+  getUserTasks,
+  getAssignableUsers,
+  type TaskFilters,
+} from "@/features/tasks/queries";
 import { getUserProjects } from "@/features/projects/queries";
 import { getUserCategories } from "@/features/categories/queries";
 import { TaskList } from "@/features/tasks/components/task-list";
@@ -37,20 +41,31 @@ type SearchParams = Promise<{
   status?: string;
   priority?: string;
   category?: string;
+  assignee?: string;
   create?: string;
   view?: string;
 }>;
 
-function buildHref(
-  status: string,
-  priority: string,
-  category: string,
-  view: string
-) {
+type FilterHrefParams = {
+  status?: string;
+  priority?: string;
+  category?: string;
+  assignee?: string;
+  view?: string;
+};
+
+function buildHref({
+  status,
+  priority,
+  category,
+  assignee,
+  view,
+}: FilterHrefParams) {
   const params = new URLSearchParams();
   if (status) params.set("status", status);
   if (priority) params.set("priority", priority);
   if (category) params.set("category", category);
+  if (assignee) params.set("assignee", assignee);
   if (view) params.set("view", view);
   const qs = params.toString();
   return qs ? `/dashboard/tasks?${qs}` : "/dashboard/tasks";
@@ -64,7 +79,8 @@ export default async function TasksPage({
   const session = await getSession();
   if (!session) redirect("/login");
 
-  const { status, priority, category, create, view } = await searchParams;
+  const { status, priority, category, assignee, create, view } =
+    await searchParams;
   const activeView = view === "kanban" ? "kanban" : ("list" as const);
 
   const validStatus = STATUS_FILTERS.some((f) => f.value === status)
@@ -73,15 +89,18 @@ export default async function TasksPage({
   const validPriority = PRIORITY_FILTERS.some((f) => f.value === priority)
     ? (priority as NonNullable<TaskFilters["priority"]>)
     : undefined;
+  const assignedToMe = assignee === "me";
 
-  const [tasks, projects, categories] = await Promise.all([
+  const [tasks, projects, categories, assignees] = await Promise.all([
     getUserTasks({
       status: validStatus,
       priority: validPriority,
       categoryId: category,
+      assigneeId: assignedToMe ? session.uid : undefined,
     }),
     getUserProjects(),
     getUserCategories(),
+    getAssignableUsers(),
   ]);
 
   const activeStatus = validStatus ?? "";
@@ -98,7 +117,13 @@ export default async function TasksPage({
         <div className="flex items-center gap-2">
           <div className="flex items-center rounded-full bg-muted p-0.5 text-muted-foreground ring-1 ring-border/50">
             <Link
-              href={buildHref(activeStatus, activePriority, activeCategory, "")}
+              href={buildHref({
+                status: activeStatus,
+                priority: activePriority,
+                category: activeCategory,
+                assignee: assignedToMe ? "me" : "",
+                view: "",
+              })}
               aria-current={activeView === "list" ? "page" : undefined}
               className={cn(
                 "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
@@ -111,7 +136,13 @@ export default async function TasksPage({
               Lista
             </Link>
             <Link
-              href={buildHref(activeStatus, activePriority, activeCategory, "kanban")}
+              href={buildHref({
+                status: activeStatus,
+                priority: activePriority,
+                category: activeCategory,
+                assignee: assignedToMe ? "me" : "",
+                view: "kanban",
+              })}
               aria-current={activeView === "kanban" ? "page" : undefined}
               className={cn(
                 "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
@@ -145,12 +176,13 @@ export default async function TasksPage({
           <div className="flex flex-wrap gap-1.5">
             {STATUS_FILTERS.map((filter) => {
               const isActive = filter.value === activeStatus;
-              const href = buildHref(
-                filter.value,
-                activePriority,
-                activeCategory,
-                activeView
-              );
+              const href = buildHref({
+                status: filter.value,
+                priority: activePriority,
+                category: activeCategory,
+                assignee: assignedToMe ? "me" : "",
+                view: activeView,
+              });
               return (
                 <Link
                   key={filter.label}
@@ -178,12 +210,13 @@ export default async function TasksPage({
           <div className="flex flex-wrap gap-1.5">
             {PRIORITY_FILTERS.map((filter) => {
               const isActive = filter.value === activePriority;
-              const href = buildHref(
-                activeStatus,
-                filter.value,
-                activeCategory,
-                activeView
-              );
+              const href = buildHref({
+                status: activeStatus,
+                priority: filter.value,
+                category: activeCategory,
+                assignee: assignedToMe ? "me" : "",
+                view: activeView,
+              });
               return (
                 <Link
                   key={filter.label}
@@ -203,6 +236,44 @@ export default async function TasksPage({
           </div>
         </div>
 
+        {/* Assignee filter */}
+        <div className="flex flex-col gap-2">
+          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Asignación
+          </span>
+          <div className="flex flex-wrap gap-1.5">
+            {[
+              { value: "", label: "Todas" },
+              { value: "me", label: "Asignadas a mí" },
+            ].map((filter) => {
+              const isActive = (assignee ?? "") === filter.value;
+              const href = buildHref({
+                status: activeStatus,
+                priority: activePriority,
+                category: activeCategory,
+                assignee: filter.value,
+                view: activeView,
+              });
+              return (
+                <Link
+                  key={filter.label}
+                  href={href}
+                  aria-current={isActive ? "true" : undefined}
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
+                    isActive
+                      ? "bg-primary text-primary-foreground shadow-sm"
+                      : "bg-background text-muted-foreground hover:bg-muted ring-1 ring-border/50"
+                  )}
+                >
+                  {filter.value === "me" && <UserRound className="size-3.5" />}
+                  {filter.label}
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+
         {/* Category filter */}
         {categories.length > 0 && (
           <div className="flex flex-col gap-2">
@@ -211,7 +282,13 @@ export default async function TasksPage({
             </span>
             <div className="flex flex-wrap gap-1.5">
               <Link
-                href={buildHref(activeStatus, activePriority, "", activeView)}
+                href={buildHref({
+                  status: activeStatus,
+                  priority: activePriority,
+                  category: "",
+                  assignee: assignedToMe ? "me" : "",
+                  view: activeView,
+                })}
                 aria-current={!activeCategory ? "true" : undefined}
                 className={cn(
                   "inline-flex items-center rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
@@ -227,7 +304,13 @@ export default async function TasksPage({
                 return (
                   <Link
                     key={c.id}
-                    href={buildHref(activeStatus, activePriority, c.id, activeView)}
+                    href={buildHref({
+                      status: activeStatus,
+                      priority: activePriority,
+                      category: c.id,
+                      assignee: assignedToMe ? "me" : "",
+                      view: activeView,
+                    })}
                     aria-current={isActive ? "true" : undefined}
                     className={cn(
                       "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
@@ -261,6 +344,7 @@ export default async function TasksPage({
           tasks={tasks}
           projects={projects}
           categories={categories}
+          assignees={assignees}
           autoOpen={create === "true"}
         />
       )}

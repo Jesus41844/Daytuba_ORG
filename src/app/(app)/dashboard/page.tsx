@@ -17,6 +17,7 @@ import { getSession } from "@/lib/auth/session";
 import { getUserTasks, getOverdueTasks } from "@/features/tasks/queries";
 import { getUserCategories } from "@/features/categories/queries";
 import { TaskCard } from "@/features/tasks/components/task-card";
+import { ProductivityPanel } from "@/features/tasks/components/productivity-panel";
 import { EmptyState } from "@/components/layout/empty-state";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
@@ -123,6 +124,11 @@ export default async function DashboardPage() {
             </CardContent>
           </Card>
         ))}
+      </section>
+
+      <section aria-label="Productividad">
+        <h2 className="mb-3 text-lg font-bold tracking-tight">Productividad</h2>
+        <ProductivityPanel tasks={tasks} />
       </section>
 
       <section aria-label="Acciones rápidas">

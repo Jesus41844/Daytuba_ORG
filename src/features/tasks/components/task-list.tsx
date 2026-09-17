@@ -5,6 +5,7 @@ import { Plus, SquareCheckBig } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import type { Project, Task, Category } from "@/types";
+import type { AssignableUser } from "../queries";
 import { CreateTaskForm } from "./create-task-form";
 import { TaskCard } from "./task-card";
 
@@ -12,6 +13,7 @@ type TaskListProps = {
   tasks: Task[];
   projects?: Project[];
   categories?: Category[];
+  assignees?: AssignableUser[];
   autoOpen?: boolean;
 };
 
@@ -19,6 +21,7 @@ export function TaskList({
   tasks,
   projects = [],
   categories = [],
+  assignees = [],
   autoOpen = false,
 }: TaskListProps) {
   const [showForm, setShowForm] = useState(autoOpen);
@@ -39,6 +42,7 @@ export function TaskList({
         <CreateTaskForm
           projects={projects}
           categories={categories}
+          assignees={assignees}
           onCreated={() => setShowForm(false)}
           onCancel={() => setShowForm(false)}
         />

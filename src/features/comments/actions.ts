@@ -10,6 +10,7 @@ import type { TaskComment } from "@/types";
 import { requireSession } from "@/lib/auth/session";
 import { requireTaskAccess } from "@/lib/access";
 import { sendPushNotification } from "@/lib/push";
+import { createNotification } from "@/features/notifications/service";
 import {
   type ActionResult,
   AppError,
@@ -102,6 +103,20 @@ export async function createComment(
             title: `${authorName} comentó en "${task[0].title}"`,
             body: parsed.data.body.slice(0, 120),
             url: `/dashboard/tasks/${parsed.data.taskId}`,
+          })
+        )
+      );
+
+      await Promise.all(
+        [...recipientIds].map((uid) =>
+          createNotification({
+            userId: uid,
+            type: "comment",
+            title: `${authorName} comentó en "${task[0].title}"`,
+            body: parsed.data.body.slice(0, 120),
+            url: `/dashboard/tasks/${parsed.data.taskId}`,
+            actorId: session.uid,
+            actorName: authorName,
           })
         )
       );

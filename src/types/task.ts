@@ -29,6 +29,8 @@ export interface Task {
   priority: TaskPriority;
   createdById: string;
   createdByName: string;
+  assigneeId: string | null;
+  assigneeName: string;
   startDate: string | null;
   dueDate: string | null;
   estimatedHours: number | null;
@@ -83,4 +85,23 @@ export interface TaskComment {
   body: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export type NotificationType =
+  | "invite"
+  | "comment"
+  | "assignment"
+  | "info";
+
+export interface AppNotification {
+  id: string;
+  userId: string;
+  type: NotificationType;
+  title: string;
+  body: string;
+  url: string;
+  actorId: string | null;
+  actorName: string;
+  readAt: string | null;
+  createdAt: string;
 }

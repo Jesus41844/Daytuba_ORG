@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Plus_Jakarta_Sans, Space_Grotesk } from "next/font/google";
 
 import "./globals.css";
@@ -18,6 +18,19 @@ const spaceGrotesk = Space_Grotesk({
 export const metadata: Metadata = {
   title: "Daytuba Tasks",
   description: "Organiza tu semana universitaria — tareas, proyectos y calendario en un solo lugar",
+  applicationName: "Daytuba Tasks",
+  appleWebApp: {
+    capable: true,
+    title: "Daytuba",
+    statusBarStyle: "default",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#f5f6fa" },
+    { media: "(prefers-color-scheme: dark)", color: "#161618" },
+  ],
 };
 
 const THEME_SCRIPT = `

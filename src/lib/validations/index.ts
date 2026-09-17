@@ -34,6 +34,7 @@ export const createTaskSchema = z.object({
     .default("none"),
   reminderAt: z.string().optional(),
   categories: z.array(z.string()).optional(),
+  assigneeId: z.string().min(1).optional(),
 });
 
 export const updateTaskSchema = createTaskSchema.partial().extend({
@@ -44,6 +45,7 @@ export const updateTaskSchema = createTaskSchema.partial().extend({
   pdfUrl: z.string().url().nullable().optional(),
   pdfName: z.string().max(255).nullable().optional(),
   reminderAt: z.string().nullable().optional(),
+  assigneeId: z.string().min(1).nullable().optional(),
 });
 
 export const createProjectSchema = z.object({

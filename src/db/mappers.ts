@@ -1,5 +1,11 @@
-import type { CategoryRow, ProjectRow, TaskRow } from "@/db/schema";
 import type {
+  CategoryRow,
+  NotificationRow,
+  ProjectRow,
+  TaskRow,
+} from "@/db/schema";
+import type {
+  AppNotification,
   Category,
   MoodlePlatform,
   Project,
@@ -26,6 +32,8 @@ export function mapTask(row: TaskRow): Task {
     priority: row.priority,
     createdById: row.createdById,
     createdByName: row.createdByName,
+    assigneeId: row.assigneeId,
+    assigneeName: row.assigneeName,
     startDate: toIso(row.startDate),
     dueDate: toIso(row.dueDate),
     estimatedHours: row.estimatedHours,
@@ -72,6 +80,21 @@ export function mapCategory(row: CategoryRow): Category {
     userId: row.userId,
     name: row.name,
     color: row.color,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+export function mapNotification(row: NotificationRow): AppNotification {
+  return {
+    id: row.id,
+    userId: row.userId,
+    type: row.type as AppNotification["type"],
+    title: row.title,
+    body: row.body,
+    url: row.url,
+    actorId: row.actorId,
+    actorName: row.actorName,
+    readAt: toIso(row.readAt),
     createdAt: row.createdAt.toISOString(),
   };
 }

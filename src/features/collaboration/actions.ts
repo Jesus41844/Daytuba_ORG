@@ -8,10 +8,10 @@ import { db } from "@/db";
 import { projectMembers, projects, users } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
 import {
-  requireProjectAccess,
   requireProjectOwner,
 } from "@/lib/access";
 import { sendPushNotification } from "@/lib/push";
+import { createNotification } from "@/features/notifications/service";
 import {
   type ActionResult,
   AppError,
@@ -51,7 +51,7 @@ export async function inviteMember(
     const parsed = inviteMemberSchema.safeParse(data);
     if (!parsed.success) return validationResult(parsed.error);
 
-    await requireProjectAccess(parsed.data.projectId, { write: true });
+    await requireProjectOwner(parsed.data.projectId);
 
     const userRows = await db
       .select({ id: users.id, email: users.email, displayName: users.displayName })
@@ -102,18 +102,31 @@ export async function inviteMember(
       )
       .limit(1);
 
+    const actorName = session.displayName || session.email;
+    const roleLabel = parsed.data.role === "editor" ? "editor" : "lector";
+
     try {
       const projectRow = await db
         .select({ name: projects.name })
         .from(projects)
         .where(eq(projects.id, parsed.data.projectId))
         .limit(1);
+      const projectName = projectRow[0]?.name ?? "nuevo proyecto";
+
       await sendPushNotification(target.id, {
-        title: `${session.displayName || session.email} te invitó a un proyecto`,
-        body: `Ahora tienes acceso a "${projectRow[0]?.name ?? "nuevo proyecto"}" como ${
-          parsed.data.role === "editor" ? "editor" : "lector"
-        }`,
+        title: `${actorName} te invitó a un proyecto`,
+        body: `Ahora tienes acceso a "${projectName}" como ${roleLabel}`,
         url: `/dashboard/projects/${parsed.data.projectId}`,
+      });
+
+      await createNotification({
+        userId: target.id,
+        type: "invite",
+        title: `${actorName} te invitó a un proyecto`,
+        body: `Ahora tienes acceso a "${projectName}" como ${roleLabel}`,
+        url: `/dashboard/projects/${parsed.data.projectId}`,
+        actorId: session.uid,
+        actorName,
       });
     } catch {
       // push must never break the invite flow

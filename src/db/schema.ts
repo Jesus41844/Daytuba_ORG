@@ -116,6 +116,10 @@ export const tasks = pgTable(
       .default("medium"),
     createdById: text("created_by_id").notNull().default(""),
     createdByName: text("created_by_name").notNull().default(""),
+    assigneeId: text("assignee_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    assigneeName: text("assignee_name").notNull().default(""),
     startDate: timestamp("start_date", { withTimezone: true }),
     dueDate: timestamp("due_date", { withTimezone: true }),
     estimatedHours: doublePrecision("estimated_hours"),
@@ -143,6 +147,7 @@ export const tasks = pgTable(
     index("tasks_user_archived_idx").on(table.userId, table.isArchived),
     index("tasks_project_idx").on(table.projectId),
     index("tasks_due_date_idx").on(table.dueDate),
+    index("tasks_assignee_idx").on(table.assigneeId),
   ]
 );
 
@@ -268,6 +273,30 @@ export const pushSubscriptions = pgTable(
   ]
 );
 
+export const notifications = pgTable(
+  "notifications",
+  {
+    id: id(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    type: text("type").notNull().default("info"),
+    title: text("title").notNull(),
+    body: text("body").notNull().default(""),
+    url: text("url").notNull().default(""),
+    actorId: text("actor_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    actorName: text("actor_name").notNull().default(""),
+    readAt: timestamp("read_at", { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    index("notifications_user_idx").on(table.userId),
+    index("notifications_user_read_idx").on(table.userId, table.readAt),
+  ]
+);
+
 export const usersRelations = relations(users, ({ many }) => ({
   sessions: many(sessions),
   projects: many(projects),
@@ -347,3 +376,4 @@ export type MoodleCredentialRow = typeof moodleCredentials.$inferSelect;
 export type ProjectMemberRow = typeof projectMembers.$inferSelect;
 export type TaskCommentRow = typeof taskComments.$inferSelect;
 export type PushSubscriptionRow = typeof pushSubscriptions.$inferSelect;
+export type NotificationRow = typeof notifications.$inferSelect;

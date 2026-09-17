@@ -15,13 +15,14 @@ import {
 
 import { db } from "@/db";
 import { mapTask } from "@/db/mappers";
-import { tasks } from "@/db/schema";
+import { projectMembers, projects, tasks, users } from "@/db/schema";
 import type { Task } from "@/types";
 import { requireSession } from "@/lib/auth/session";
 import {
   buildTaskVisibility,
   canAccessTask,
   getAccessibleProjectIds,
+  getProjectAccess,
 } from "@/lib/access";
 
 const REMINDER_WINDOW_MS = 10 * 60 * 1000;
@@ -31,6 +32,14 @@ export type TaskFilters = {
   status?: Task["status"];
   priority?: Task["priority"];
   categoryId?: string;
+  assigneeId?: string;
+};
+
+export type AssignableUser = {
+  id: string;
+  displayName: string;
+  email: string;
+  photoUrl: string | null;
 };
 
 export async function getUserTasks(
@@ -52,6 +61,9 @@ export async function getUserTasks(
   }
   if (filters?.priority) {
     conditions.push(eq(tasks.priority, filters.priority));
+  }
+  if (filters?.assigneeId) {
+    conditions.push(eq(tasks.assigneeId, filters.assigneeId));
   }
 
   let rows = await db
@@ -185,4 +197,56 @@ export async function searchTasks(query: string): Promise<Task[]> {
     .orderBy(asc(tasks.sortOrder), desc(tasks.createdAt));
 
   return rows.map(mapTask);
+}
+
+export async function getAssignableUsers(
+  projectId?: string | null
+): Promise<AssignableUser[]> {
+  const session = await requireSession();
+
+  const result = new Map<string, AssignableUser>();
+  result.set(session.uid, {
+    id: session.uid,
+    displayName: session.displayName || session.email,
+    email: session.email,
+    photoUrl: session.photoUrl,
+  });
+
+  if (!projectId) return [...result.values()];
+
+  const access = await getProjectAccess(projectId, session);
+  if (!access) return [...result.values()];
+
+  const [ownerRows, memberRows] = await Promise.all([
+    db
+      .select({
+        id: users.id,
+        displayName: users.displayName,
+        email: users.email,
+        photoUrl: users.photoUrl,
+      })
+      .from(projects)
+      .innerJoin(users, eq(users.id, projects.userId))
+      .where(eq(projects.id, projectId))
+      .limit(1),
+    db
+      .select({
+        id: users.id,
+        displayName: users.displayName,
+        email: users.email,
+        photoUrl: users.photoUrl,
+      })
+      .from(projectMembers)
+      .innerJoin(users, eq(users.id, projectMembers.userId))
+      .where(eq(projectMembers.projectId, projectId)),
+  ]);
+
+  for (const row of ownerRows) {
+    result.set(row.id, { ...row, displayName: row.displayName || row.email });
+  }
+  for (const row of memberRows) {
+    result.set(row.id, { ...row, displayName: row.displayName || row.email });
+  }
+
+  return [...result.values()];
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -18,6 +18,7 @@ import {
 import type { Project, Task, Category } from "@/types";
 import { createTaskSchema, type CreateTaskInput } from "@/lib/validations";
 import { createTask } from "../actions";
+import { getAssignableUsers, type AssignableUser } from "../queries";
 import { uploadPdfToBlob } from "@/lib/blob-client";
 import { taskPdfPathname } from "@/lib/blob-paths";
 import { confirmTaskPdfUpload } from "@/features/files/actions";
@@ -25,6 +26,7 @@ import { confirmTaskPdfUpload } from "@/features/files/actions";
 type CreateTaskFormProps = {
   projects: Project[];
   categories: Category[];
+  assignees?: AssignableUser[];
   onCreated?: (task: Task) => void;
   onCancel?: () => void;
 };
@@ -39,6 +41,7 @@ const PRIORITY_ITEMS = [
 export function CreateTaskForm({
   projects,
   categories,
+  assignees: initialAssignees = [],
   onCreated,
   onCancel,
 }: CreateTaskFormProps) {
@@ -46,6 +49,7 @@ export function CreateTaskForm({
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [assignees, setAssignees] = useState<AssignableUser[]>(initialAssignees);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const form = useForm<z.input<typeof createTaskSchema>>({
@@ -60,6 +64,31 @@ export function CreateTaskForm({
 
   const watchedPriority = useWatch({ control: form.control, name: "priority" });
   const watchedProjectId = useWatch({ control: form.control, name: "projectId" });
+  const watchedAssigneeId = useWatch({ control: form.control, name: "assigneeId" });
+
+  const didMount = useRef(false);
+  useEffect(() => {
+    if (!didMount.current) {
+      didMount.current = true;
+      return;
+    }
+    let cancelled = false;
+    getAssignableUsers(watchedProjectId || null)
+      .then((users) => {
+        if (cancelled) return;
+        setAssignees(users);
+        const current = form.getValues("assigneeId");
+        if (current && !users.some((user) => user.id === current)) {
+          form.setValue("assigneeId", undefined);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setAssignees(initialAssignees);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [watchedProjectId, initialAssignees, form]);
 
   const projectItems = [
     { value: "", label: "Sin proyecto" },
@@ -67,6 +96,18 @@ export function CreateTaskForm({
   ];
 
   const selectedProjectLabel = projectItems.find((p) => p.value === (watchedProjectId ?? ""))?.label ?? "Sin proyecto";
+
+  const assigneeItems = [
+    { value: "", label: "Sin asignar" },
+    ...assignees.map((user) => ({
+      value: user.id,
+      label: user.displayName || user.email,
+    })),
+  ];
+
+  const selectedAssigneeLabel =
+    assigneeItems.find((a) => a.value === (watchedAssigneeId ?? ""))?.label ??
+    "Sin asignar";
 
   function toggleCategory(categoryId: string) {
     setSelectedCategories((prev) =>
@@ -100,6 +141,7 @@ export function CreateTaskForm({
       priority: data.priority ?? "medium",
       recurrence: data.recurrence ?? "none",
       projectId: data.projectId || undefined,
+      assigneeId: data.assigneeId || undefined,
       description: data.description,
       startDate: data.startDate,
       dueDate: data.dueDate,
@@ -166,7 +208,7 @@ export function CreateTaskForm({
             </p>
           )}
 
-          <div className="grid gap-2 sm:grid-cols-3">
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
             <Select
               items={PRIORITY_ITEMS}
               value={watchedPriority ?? "medium"}
@@ -198,6 +240,25 @@ export function CreateTaskForm({
               </SelectTrigger>
               <SelectContent>
                 {projectItems.map((item) => (
+                  <SelectItem key={item.value} value={item.value}>
+                    {item.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select
+              items={assigneeItems}
+              value={watchedAssigneeId ?? ""}
+              onValueChange={(value) =>
+                form.setValue("assigneeId", value || undefined)
+              }
+            >
+              <SelectTrigger className="w-full" aria-label="Asignado a">
+                <SelectValue>{selectedAssigneeLabel}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {assigneeItems.map((item) => (
                   <SelectItem key={item.value} value={item.value}>
                     {item.label}
                   </SelectItem>

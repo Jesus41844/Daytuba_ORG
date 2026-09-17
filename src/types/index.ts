@@ -9,4 +9,6 @@ export type {
   ProjectMemberRole,
   Category,
   TaskComment,
+  AppNotification,
+  NotificationType,
 } from "./task";

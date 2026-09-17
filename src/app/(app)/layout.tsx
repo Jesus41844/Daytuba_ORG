@@ -2,11 +2,13 @@ import * as React from "react";
 import { redirect } from "next/navigation";
 
 import { getSession } from "@/lib/auth/session";
+import { getSharedProjects } from "@/features/projects/queries";
 import { Sidebar } from "@/components/layout/sidebar";
 import { SidebarProvider } from "@/components/layout/sidebar-provider";
 import { ToasterWrapper } from "@/components/providers/toaster-wrapper";
 import { ReminderProvider } from "@/components/providers/reminder-provider";
 import { PushProvider } from "@/components/providers/push-provider";
+import { PwaProvider } from "@/components/providers/pwa-provider";
 import { SidebarWidthUpdater } from "@/components/layout/sidebar-width-updater";
 
 export default async function AppLayout({
@@ -17,11 +19,13 @@ export default async function AppLayout({
   const session = await getSession();
   if (!session) redirect("/api/auth/clear-session");
 
+  const sharedProjects = await getSharedProjects();
+
   return (
     <SidebarProvider>
       <SidebarWidthUpdater />
       <div className="min-h-svh">
-        <Sidebar user={session} />
+        <Sidebar user={session} sharedProjects={sharedProjects} />
         <div className="flex min-h-svh flex-col max-lg:pl-0 lg:pl-(--sidebar-width)">
           <main className="w-full flex-1 px-4 py-4 sm:px-6 lg:px-8 lg:py-6">
             {children}
@@ -30,6 +34,7 @@ export default async function AppLayout({
         <ToasterWrapper />
         <ReminderProvider />
         <PushProvider />
+        <PwaProvider />
       </div>
     </SidebarProvider>
   );

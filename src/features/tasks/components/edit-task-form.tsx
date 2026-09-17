@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -20,6 +20,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import type { Project, Task, Category } from "@/types";
 import { updateTaskSchema, type UpdateTaskInput } from "@/lib/validations";
 import { updateTask } from "../actions";
+import { getAssignableUsers, type AssignableUser } from "../queries";
 import {
   addCategoryToTask,
   removeCategoryFromTask,
@@ -31,6 +32,7 @@ type EditTaskFormProps = {
   projects: Project[];
   allCategories: Category[];
   taskCategories: Category[];
+  assignees: AssignableUser[];
   readOnly?: boolean;
 };
 
@@ -54,6 +56,7 @@ export function EditTaskForm({
   projects,
   allCategories,
   taskCategories: initialTaskCategories,
+  assignees: initialAssignees,
   readOnly = false,
 }: EditTaskFormProps) {
   const router = useRouter();
@@ -64,6 +67,7 @@ export function EditTaskForm({
   );
   const [pdfUrl, setPdfUrl] = useState<string | null>(task.pdfUrl);
   const [pdfName, setPdfName] = useState<string | null>(task.pdfName);
+  const [assignees, setAssignees] = useState<AssignableUser[]>(initialAssignees);
 
   const form = useForm<UpdateTaskInput>({
     resolver: zodResolver(updateTaskSchema),
@@ -73,6 +77,7 @@ export function EditTaskForm({
       status: task.status,
       priority: task.priority,
       projectId: task.projectId ?? "",
+      assigneeId: task.assigneeId ?? null,
       dueDate: task.dueDate?.slice(0, 10) ?? "",
       startDate: task.startDate?.slice(0, 10) ?? "",
       reminderAt: task.reminderAt?.slice(0, 16) ?? "",
@@ -82,6 +87,32 @@ export function EditTaskForm({
   const watchedStatus = useWatch({ control: form.control, name: "status" });
   const watchedPriority = useWatch({ control: form.control, name: "priority" });
   const watchedProjectId = useWatch({ control: form.control, name: "projectId" });
+  const watchedAssigneeId = useWatch({ control: form.control, name: "assigneeId" });
+
+  const didMount = useRef(false);
+  useEffect(() => {
+    if (!didMount.current) {
+      didMount.current = true;
+      return;
+    }
+    let cancelled = false;
+    getAssignableUsers(watchedProjectId || null)
+      .then((users) => {
+        if (cancelled) return;
+        setAssignees(users);
+        const current = form.getValues("assigneeId");
+        if (current && !users.some((user) => user.id === current)) {
+          form.setValue("assigneeId", null);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setAssignees(initialAssignees);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [watchedProjectId, initialAssignees, form]);
+
 
   const projectItems = [
     { value: "", label: "Sin proyecto" },
@@ -89,6 +120,18 @@ export function EditTaskForm({
   ];
 
   const selectedProjectLabel = projectItems.find((p) => p.value === (watchedProjectId ?? ""))?.label ?? "Sin proyecto";
+
+  const assigneeItems = [
+    { value: "", label: "Sin asignar" },
+    ...assignees.map((user) => ({
+      value: user.id,
+      label: user.displayName || user.email,
+    })),
+  ];
+
+  const selectedAssigneeLabel =
+    assigneeItems.find((a) => a.value === (watchedAssigneeId ?? ""))?.label ??
+    "Sin asignar";
 
   function toggleCategory(categoryId: string) {
     startTransition(async () => {
@@ -113,6 +156,7 @@ export function EditTaskForm({
         status: data.status,
         priority: data.priority,
         projectId: data.projectId || undefined,
+        assigneeId: data.assigneeId || null,
         dueDate: data.dueDate || undefined,
         startDate: data.startDate || undefined,
         reminderAt: data.reminderAt || undefined,
@@ -212,6 +256,26 @@ export function EditTaskForm({
                 </SelectTrigger>
                 <SelectContent>
                   {projectItems.map((item) => (
+                    <SelectItem key={item.value} value={item.value}>
+                      {item.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <Label>Asignado a</Label>
+              <Select
+                value={watchedAssigneeId ?? ""}
+                disabled={readOnly}
+                onValueChange={(v) => form.setValue("assigneeId", v || null)}
+              >
+                <SelectTrigger>
+                  <SelectValue>{selectedAssigneeLabel}</SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {assigneeItems.map((item) => (
                     <SelectItem key={item.value} value={item.value}>
                       {item.label}
                     </SelectItem>

@@ -68,6 +68,8 @@ export function moodleEventToTask(
     priority: getPriority(dueDate),
     createdById: "moodle-sync",
     createdByName: "Moodle",
+    assigneeId: null,
+    assigneeName: "",
     startDate: null,
     dueDate: dueDate.toISOString(),
     estimatedHours: null,

@@ -1,19 +1,20 @@
 "use server";
 
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { db } from "@/db";
 import { mapTask, toDateOrNull } from "@/db/mappers";
-import { tasks } from "@/db/schema";
+import { projectMembers, projects, tasks, users } from "@/db/schema";
 import type { Task } from "@/types";
-import { requireSession } from "@/lib/auth/session";
+import { requireSession, type AuthUser } from "@/lib/auth/session";
 import {
   getAccessibleProjectIds,
   getProjectAccess,
   requireTaskAccess,
 } from "@/lib/access";
+import { createNotification } from "@/features/notifications/service";
 import {
   type ActionResult,
   AppError,
@@ -70,6 +71,67 @@ async function getNextSortOrder(userId: string): Promise<number> {
   return (rows[0]?.sortOrder ?? -1) + 1;
 }
 
+async function resolveAssigneeName(
+  assigneeId: string,
+  projectId: string | null,
+  session: AuthUser
+): Promise<string | null> {
+  if (assigneeId === session.uid) {
+    return session.displayName || session.email;
+  }
+
+  if (!projectId) return null;
+
+  const [ownerRows, memberRows] = await Promise.all([
+    db
+      .select({ userId: projects.userId })
+      .from(projects)
+      .where(eq(projects.id, projectId))
+      .limit(1),
+    db
+      .select({ userId: projectMembers.userId })
+      .from(projectMembers)
+      .where(
+        and(
+          eq(projectMembers.projectId, projectId),
+          eq(projectMembers.userId, assigneeId)
+        )
+      )
+      .limit(1),
+  ]);
+
+  const isOwner = ownerRows[0]?.userId === assigneeId;
+  if (!isOwner && !memberRows[0]) return null;
+
+  const userRows = await db
+    .select({ displayName: users.displayName, email: users.email })
+    .from(users)
+    .where(eq(users.id, assigneeId))
+    .limit(1);
+
+  const target = userRows[0];
+  if (!target) return null;
+  return target.displayName || target.email;
+}
+
+async function notifyAssignment(
+  assigneeId: string,
+  actor: AuthUser,
+  taskId: string,
+  taskTitle: string
+): Promise<void> {
+  if (assigneeId === actor.uid) return;
+  await createNotification({
+    userId: assigneeId,
+    type: "assignment",
+    title: `${actor.displayName || actor.email} te asignó una tarea`,
+    body: taskTitle,
+    url: `/dashboard/tasks/${taskId}`,
+    actorId: actor.uid,
+    actorName: actor.displayName || actor.email,
+  });
+}
+
 export async function createTask(
   data: CreateTaskInput
 ): Promise<ActionResult<Task>> {
@@ -96,6 +158,22 @@ export async function createTask(
       }
     }
 
+    let assigneeName = "";
+    if (parsed.data.assigneeId) {
+      const resolved = await resolveAssigneeName(
+        parsed.data.assigneeId,
+        parsed.data.projectId ?? null,
+        session
+      );
+      if (resolved === null) {
+        return {
+          success: false,
+          error: "No puedes asignar la tarea a ese usuario",
+        };
+      }
+      assigneeName = resolved;
+    }
+
     const inserted = await db
       .insert(tasks)
       .values({
@@ -108,6 +186,8 @@ export async function createTask(
         priority: parsed.data.priority,
         createdById: session.uid,
         createdByName: session.displayName,
+        assigneeId: parsed.data.assigneeId ?? null,
+        assigneeName,
         startDate: toDateOrNull(parsed.data.startDate ?? null),
         dueDate: toDateOrNull(parsed.data.dueDate ?? null),
         estimatedHours: parsed.data.estimatedHours ?? null,
@@ -119,6 +199,15 @@ export async function createTask(
         source: "manual",
       })
       .returning();
+
+    if (parsed.data.assigneeId) {
+      await notifyAssignment(
+        parsed.data.assigneeId,
+        session,
+        inserted[0]!.id,
+        inserted[0]!.title
+      );
+    }
 
     revalidatePath("/dashboard/tasks");
     revalidatePath("/dashboard/projects");
@@ -138,9 +227,10 @@ export async function updateTask(
     const parsed = updateTaskSchema.safeParse(data);
     if (!parsed.success) return validationResult(parsed.error);
 
-    await findUserTask(id, { write: true });
+    const { row: existing, session } = await findUserTask(id, { write: true });
 
-    const session = await requireSession();
+    const values: Partial<typeof tasks.$inferInsert> = {};
+
     if (parsed.data.projectId !== undefined && parsed.data.projectId) {
       const accessible = await getAccessibleProjectIds(session);
       if (!accessible.includes(parsed.data.projectId)) {
@@ -149,9 +239,38 @@ export async function updateTask(
           error: "No tienes acceso a este proyecto",
         };
       }
+      const destinationAccess = await getProjectAccess(
+        parsed.data.projectId,
+        session
+      );
+      if (!destinationAccess || !destinationAccess.readWrite) {
+        return {
+          success: false,
+          error: "No tienes permisos de edición en este proyecto",
+        };
+      }
     }
 
-    const values: Partial<typeof tasks.$inferInsert> = {};
+    if (parsed.data.assigneeId !== undefined) {
+      if (parsed.data.assigneeId === null) {
+        values.assigneeId = null;
+        values.assigneeName = "";
+      } else {
+        const name = await resolveAssigneeName(
+          parsed.data.assigneeId,
+          parsed.data.projectId ?? existing.projectId,
+          session
+        );
+        if (name === null) {
+          return {
+            success: false,
+            error: "No puedes asignar la tarea a ese usuario",
+          };
+        }
+        values.assigneeId = parsed.data.assigneeId;
+        values.assigneeName = name;
+      }
+    }
 
     if (parsed.data.title !== undefined) values.title = parsed.data.title;
     if (parsed.data.description !== undefined)
@@ -197,6 +316,18 @@ export async function updateTask(
       .set(values)
       .where(eq(tasks.id, id))
       .returning();
+
+    if (
+      parsed.data.assigneeId &&
+      parsed.data.assigneeId !== existing.assigneeId
+    ) {
+      await notifyAssignment(
+        parsed.data.assigneeId,
+        session,
+        id,
+        updated[0]!.title
+      );
+    }
 
     revalidatePath("/dashboard/tasks");
     revalidatePath(`/dashboard/tasks/${id}`);

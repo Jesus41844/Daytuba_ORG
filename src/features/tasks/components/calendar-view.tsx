@@ -3,11 +3,16 @@
 import { useState, useMemo, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { CalendarHeader } from "./calendar-header";
+import {
+  CalendarFilters,
+  EMPTY_CALENDAR_FILTERS,
+  type CalendarFilterState,
+} from "./calendar-filters";
 import { MonthView } from "./month-view";
 import { WeekView } from "./week-view";
 import { DayView } from "./day-view";
 import { EventDialog } from "@/features/events/components/event-dialog";
-import type { Task } from "@/types";
+import type { Category, Project, Task } from "@/types";
 import type { ScheduleBlock } from "@/features/schedule/types";
 import type { CalendarEvent } from "@/features/events/types";
 import { parseDateKey } from "../lib/calendar-utils";
@@ -18,12 +23,16 @@ type CalendarViewProps = {
   tasks: Task[];
   scheduleBlocks: ScheduleBlock[];
   events: CalendarEvent[];
+  projects: Project[];
+  categories: Category[];
 };
 
 export function CalendarView({
   tasks,
   scheduleBlocks,
   events,
+  projects,
+  categories,
 }: CalendarViewProps) {
   const searchParams = useSearchParams();
 
@@ -44,6 +53,35 @@ export function CalendarView({
   const [dialogEditingEvent, setDialogEditingEvent] = useState<CalendarEvent | null>(null);
 
   const [localEvents, setLocalEvents] = useState<CalendarEvent[]>(events);
+  const [filters, setFilters] = useState<CalendarFilterState>(
+    EMPTY_CALENDAR_FILTERS
+  );
+
+  const filteredTasks = useMemo(() => {
+    return tasks.filter((task) => {
+      if (filters.status && task.status !== filters.status) return false;
+      if (filters.priority && task.priority !== filters.priority) return false;
+      if (filters.projectId && task.projectId !== filters.projectId)
+        return false;
+      if (filters.categoryId && !task.categories.includes(filters.categoryId))
+        return false;
+      if (filters.from && (!task.dueDate || task.dueDate < filters.from))
+        return false;
+      if (filters.to && (!task.dueDate || task.dueDate > filters.to))
+        return false;
+      return true;
+    });
+  }, [tasks, filters]);
+
+  const filteredEvents = useMemo(() => {
+    if (!filters.from && !filters.to) return localEvents;
+    return localEvents.filter((evt) => {
+      if (evt.dayOfWeek !== null || !evt.date) return true;
+      if (filters.from && evt.date < filters.from) return false;
+      if (filters.to && evt.date > filters.to) return false;
+      return true;
+    });
+  }, [localEvents, filters.from, filters.to]);
 
   const handlePrev = useCallback(() => {
     const next = new Date(currentDate);
@@ -123,13 +161,21 @@ export function CalendarView({
         onViewChange={setViewMode}
       />
 
+      <CalendarFilters
+        filters={filters}
+        onChange={setFilters}
+        projects={projects}
+        categories={categories}
+        matchCount={filteredTasks.length}
+      />
+
       <div className="flex-1 min-h-0 overflow-hidden">
         {viewMode === "month" && (
           <MonthView
             currentDate={currentDate}
-            tasks={tasks}
+            tasks={filteredTasks}
             scheduleBlocks={scheduleBlocks}
-            events={localEvents}
+            events={filteredEvents}
             onDayClick={(d) => openDayDialog(d)}
             onEventClick={handleEventClick}
           />
@@ -137,9 +183,9 @@ export function CalendarView({
         {viewMode === "week" && (
           <WeekView
             currentDate={currentDate}
-            tasks={tasks}
+            tasks={filteredTasks}
             scheduleBlocks={scheduleBlocks}
-            events={localEvents}
+            events={filteredEvents}
             onSlotClick={(d, t) => openSlotDialog(d, t)}
             onEventClick={handleEventClick}
           />
@@ -147,9 +193,9 @@ export function CalendarView({
         {viewMode === "day" && (
           <DayView
             currentDate={currentDate}
-            tasks={tasks}
+            tasks={filteredTasks}
             scheduleBlocks={scheduleBlocks}
-            events={localEvents}
+            events={filteredEvents}
             onSlotClick={(d, t) => openSlotDialog(d, t)}
             onEventClick={handleEventClick}
           />
