@@ -29,6 +29,7 @@ import {
 import {
   markAllNotificationsRead,
   markNotificationRead,
+  processDueReminders,
 } from "@/features/notifications/actions";
 
 const POLL_INTERVAL_MS = 60_000;
@@ -65,6 +66,7 @@ export function NotificationBell({ compact = false }: { compact?: boolean }) {
   const refreshCount = React.useCallback(async () => {
     try {
       setUnread(await getUnreadNotificationCount());
+      void processDueReminders();
     } catch {
       // silencioso: la campana nunca debe romper la navegación
     }

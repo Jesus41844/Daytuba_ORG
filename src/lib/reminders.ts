@@ -1,4 +1,4 @@
-export const CATCHUP_WINDOW_MS = 60 * 60 * 1000;
+export const DUE_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 export type ReminderTaskSource = {
   id: string;

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildReminderPayload,
-  CATCHUP_WINDOW_MS,
+  DUE_WINDOW_MS,
   formatReminderDate,
 } from "@/lib/reminders";
 
@@ -64,8 +64,8 @@ describe("buildReminderPayload", () => {
   });
 });
 
-describe("CATCHUP_WINDOW_MS", () => {
-  it("es una ventana de una hora", () => {
-    expect(CATCHUP_WINDOW_MS).toBe(60 * 60 * 1000);
+describe("DUE_WINDOW_MS", () => {
+  it("es una ventana de un día", () => {
+    expect(DUE_WINDOW_MS).toBe(24 * 60 * 60 * 1000);
   });
 });

@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 
 import { db } from "@/db";
 import { notifications, notificationPreferences } from "@/db/schema";
+import { processDueReminderTasks } from "@/lib/reminder-service";
 import { requireSession } from "@/lib/auth/session";
 import type { ReminderPreferences } from "./queries";
 
@@ -64,5 +65,22 @@ export async function updateReminderPreferences(
   } catch (error) {
     console.error("No se pudieron guardar las preferencias", error);
     return { success: false, error: "No se pudieron guardar las preferencias" };
+  }
+}
+
+export async function processDueReminders(): Promise<{
+  success: boolean;
+  error?: string;
+}> {
+  await requireSession();
+  try {
+    await processDueReminderTasks();
+    return { success: true };
+  } catch (error) {
+    console.error("No se pudieron procesar los recordatorios", error);
+    return {
+      success: false,
+      error: "No se pudieron procesar los recordatorios",
+    };
   }
 }

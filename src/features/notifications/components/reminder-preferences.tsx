@@ -50,8 +50,8 @@ export function ReminderPreferences({
           <div className="flex flex-col gap-0.5">
             <span className="text-sm font-medium">Notificaciones push</span>
             <span className="text-xs text-muted-foreground">
-              Recibe el recordatorio en el navegador/dispositivo aunque la
-              pestaña esté cerrada.
+              Recibe el recordatorio al instante en tu dispositivo mientras
+              usas la app.
             </span>
           </div>
         </div>
@@ -89,7 +89,7 @@ export function ReminderPreferences({
       >
         {saved
           ? "Preferencias guardadas"
-          : "Los recordatorios se envían automáticamente a la hora programada de cada tarea."}
+          : "Los recordatorios se envían solos al cumplirse la hora (rápido con la app abierta; barrido diario si no)."}
       </p>
     </div>
   );
