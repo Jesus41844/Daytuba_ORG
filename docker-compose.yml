@@ -25,11 +25,25 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:-utp}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-utp_tasks}
       UPLOADS_DIR: /app/uploads
       MOODLE_ENCRYPTION_KEY: ${MOODLE_ENCRYPTION_KEY:?Set MOODLE_ENCRYPTION_KEY in .env}
+      CRON_SECRET: ${CRON_SECRET:-}
     volumes:
       - uploads:/app/uploads
     depends_on:
       db:
         condition: service_healthy
+
+  cron:
+    image: busybox:1.36
+    restart: unless-stopped
+    depends_on:
+      - web
+    environment:
+      CRON_SECRET: ${CRON_SECRET:?Set CRON_SECRET in .env}
+      CRON_SCHEDULE: ${REMINDERS_CRON_SCHEDULE:-0 14 * * *}
+      REMINDERS_URL: http://web:3000/api/cron/reminders
+    volumes:
+      - ./scripts/cron-reminders.sh:/cron-reminders.sh:ro
+    command: ["/bin/sh", "/cron-reminders.sh"]
 
 volumes:
   pgdata:

@@ -94,6 +94,8 @@ Copiar `.env.example` a `.env.local` y completar:
 DATABASE_URL=postgres://usuario:password@host:5432/utp_tasks
 UPLOADS_DIR=./uploads
 MOODLE_ENCRYPTION_KEY=<hex 32 bytes>   # openssl rand -hex 32
+CRON_SECRET=<hex 24 bytes>             # openssl rand -hex 24
+REMINDERS_CRON_SCHEDULE=0 14 * * *     # barrido diario en UTC (= 09:00 Panamá)
 ```
 
 ## Desarrollo
@@ -131,6 +133,12 @@ docker compose up -d --build
 # Backup de la base de datos
 docker compose exec db pg_dump -U utp utp_tasks > backup.sql
 ```
+
+El compose levanta además el sidecar `cron` (imagen `busybox`), que actúa como
+crontab: cada día (véase `REMINDERS_CRON_SCHEDULE`, en UTC) llama a
+`/api/cron/reminders` con el `CRON_SECRET` para el barrido de recordatorios
+vencidos. Mientras la app está abierta, los recordatorios también se entregan
+al instante vía el polling del cliente; el cron cubre a los usuarios inactivos.
 
 La app corre como usuario no-root, escucha en el puerto 3000 (`HOSTNAME=0.0.0.0`) y usa output standalone (~150 MB). Para HTTPS, poner un reverse proxy (Caddy/nginx/Traefik) delante del puerto 3000.
 
