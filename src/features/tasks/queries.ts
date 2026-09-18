@@ -7,14 +7,16 @@ import {
   eq,
   gt,
   ilike,
+  inArray,
   or,
   lt,
   notInArray,
+  isNull,
 } from "drizzle-orm";
 
 import { db } from "@/db";
 import { mapTask } from "@/db/mappers";
-import { projectMembers, projects, tasks, users } from "@/db/schema";
+import { projectMembers, projects, tasks, users, workspaceMembers } from "@/db/schema";
 import type { Task } from "@/types";
 import { requireSession } from "@/lib/auth/session";
 import {
@@ -30,6 +32,7 @@ export type TaskFilters = {
   priority?: Task["priority"];
   categoryId?: string;
   assigneeId?: string;
+  workspaceId?: string | null;
 };
 
 export type AssignableUser = {
@@ -46,9 +49,39 @@ export async function getUserTasks(
   const accessibleProjects = await getAccessibleProjectIds(session);
 
   const conditions = [
-    buildTaskVisibility(session.uid, accessibleProjects),
     eq(tasks.isArchived, false),
   ];
+
+  if (filters?.workspaceId !== undefined) {
+    const queuedIds = await getProjectIdsByWorkspace(
+      session.uid,
+      accessibleProjects,
+      filters.workspaceId
+    );
+
+    if (queuedIds.length === 0 && filters.workspaceId !== null) {
+      return [];
+    }
+
+    if (filters.workspaceId === null) {
+      if (queuedIds.length > 0) {
+        conditions.push(
+          or(
+            inArray(tasks.projectId, queuedIds),
+            and(isNull(tasks.projectId), eq(tasks.userId, session.uid))
+          )!
+        );
+      } else {
+        conditions.push(
+          and(isNull(tasks.projectId), eq(tasks.userId, session.uid))!
+        );
+      }
+    } else if (queuedIds.length > 0) {
+      conditions.push(inArray(tasks.projectId, queuedIds));
+    }
+  } else {
+    conditions.push(buildTaskVisibility(session.uid, accessibleProjects));
+  }
 
   if (filters?.projectId) {
     conditions.push(eq(tasks.projectId, filters.projectId));
@@ -74,6 +107,28 @@ export async function getUserTasks(
   }
 
   return rows.map(mapTask);
+}
+
+async function getProjectIdsByWorkspace(
+  uid: string,
+  accessibleIds: string[],
+  workspaceId: string | null
+): Promise<string[]> {
+  if (accessibleIds.length === 0) return [];
+
+  const rows = await db
+    .select({ id: projects.id })
+    .from(projects)
+    .where(
+      and(
+        inArray(projects.id, accessibleIds),
+        workspaceId === null
+          ? isNull(projects.workspaceId)
+          : eq(projects.workspaceId, workspaceId)
+      )
+    );
+
+  return rows.map((row) => row.id);
 }
 
 export async function getTaskById(taskId: string): Promise<Task | null> {
@@ -193,7 +248,7 @@ export async function getAssignableUsers(
   const access = await getProjectAccess(projectId, session);
   if (!access) return [...result.values()];
 
-  const [ownerRows, memberRows] = await Promise.all([
+const [ownerRows, memberRows, workspaceRows] = await Promise.all([
     db
       .select({
         id: users.id,
@@ -215,12 +270,23 @@ export async function getAssignableUsers(
       .from(projectMembers)
       .innerJoin(users, eq(users.id, projectMembers.userId))
       .where(eq(projectMembers.projectId, projectId)),
+    db
+      .select({
+        id: users.id,
+        displayName: users.displayName,
+        email: users.email,
+        photoUrl: users.photoUrl,
+      })
+      .from(projects)
+      .innerJoin(
+        workspaceMembers,
+        eq(workspaceMembers.workspaceId, projects.workspaceId!)
+      )
+      .innerJoin(users, eq(users.id, workspaceMembers.userId))
+      .where(eq(projects.id, projectId)),
   ]);
 
-  for (const row of ownerRows) {
-    result.set(row.id, { ...row, displayName: row.displayName || row.email });
-  }
-  for (const row of memberRows) {
+  for (const row of [...ownerRows, ...memberRows, ...workspaceRows]) {
     result.set(row.id, { ...row, displayName: row.displayName || row.email });
   }
 

@@ -42,6 +42,7 @@ export function moodleCourseToProject(
     moodleCourseId: String(course.id),
     moodlePlatform: platform,
     moodleUrl: null,
+    workspaceId: null,
   };
 }
 

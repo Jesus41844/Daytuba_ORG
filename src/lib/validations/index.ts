@@ -53,6 +53,7 @@ export const createProjectSchema = z.object({
   description: z.string().max(500).optional(),
   icon: z.string().max(50).optional(),
   color: z.string().regex(/^#[0-9a-fA-F]{6}$/, "Color inválido").optional(),
+  workspaceId: z.string().min(1).nullable().optional(),
 });
 
 export const createCategorySchema = z.object({
@@ -81,6 +82,37 @@ export const createCommentSchema = z.object({
     .max(2000),
 });
 
+export const createWorkspaceSchema = z.object({
+  name: z.string().min(1, "El nombre es requerido").max(100),
+  icon: z.string().max(50).optional(),
+  color: z
+    .string()
+    .regex(/^#[0-9a-fA-F]{6}$/, "Color inválido")
+    .optional(),
+});
+
+export const updateWorkspaceSchema = z.object({
+  workspaceId: z.string().min(1),
+  name: z.string().min(1, "El nombre es requerido").max(100).optional(),
+  icon: z.string().max(50).optional(),
+  color: z
+    .string()
+    .regex(/^#[0-9a-fA-F]{6}$/, "Color inválido")
+    .optional(),
+});
+
+export const inviteWorkspaceMemberSchema = z.object({
+  workspaceId: z.string().min(1),
+  email: z.string().email("Email inválido"),
+  role: z.enum(["admin", "member", "viewer"]).default("member"),
+});
+
+export const updateWorkspaceMemberRoleSchema = z.object({
+  workspaceId: z.string().min(1),
+  memberUserId: z.string().min(1),
+  role: z.enum(["admin", "member", "viewer"]),
+});
+
 export type LoginInput = z.infer<typeof loginSchema>;
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type CreateTaskInput = z.infer<typeof createTaskSchema>;
@@ -90,3 +122,11 @@ export type CreateCategoryInput = z.infer<typeof createCategorySchema>;
 export type InviteMemberInput = z.infer<typeof inviteMemberSchema>;
 export type UpdateMemberRoleInput = z.infer<typeof updateMemberRoleSchema>;
 export type CreateCommentInput = z.infer<typeof createCommentSchema>;
+export type CreateWorkspaceInput = z.infer<typeof createWorkspaceSchema>;
+export type UpdateWorkspaceInput = z.infer<typeof updateWorkspaceSchema>;
+export type InviteWorkspaceMemberInput = z.infer<
+  typeof inviteWorkspaceMemberSchema
+>;
+export type UpdateWorkspaceMemberRoleInput = z.infer<
+  typeof updateWorkspaceMemberRoleSchema
+>;

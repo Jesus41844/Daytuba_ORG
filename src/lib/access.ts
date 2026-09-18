@@ -1,23 +1,51 @@
-import { and, eq, inArray, or } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, or } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 
 import { db } from "@/db";
-import { projects, projectMembers, tasks } from "@/db/schema";
+import {
+  projects,
+  projectMembers,
+  tasks,
+  workspaceMembers,
+} from "@/db/schema";
 import { requireSession, type AuthUser } from "@/lib/auth/session";
 import { ForbiddenError, NotFoundError } from "@/lib/errors";
-import type { ProjectMemberRole } from "@/types";
+import type { ProjectMemberRole, WorkspaceRole } from "@/types";
 
 export type ProjectAccess = {
   role: "owner" | ProjectMemberRole;
   readWrite: boolean;
 };
 
+export type WorkspaceAccess = {
+  role: WorkspaceRole;
+  readWrite: boolean;
+};
+
+export async function getWorkspaceRole(
+  workspaceId: string,
+  userId: string
+): Promise<WorkspaceRole | null> {
+  const rows = await db
+    .select({ role: workspaceMembers.role })
+    .from(workspaceMembers)
+    .where(
+      and(
+        eq(workspaceMembers.workspaceId, workspaceId),
+        eq(workspaceMembers.userId, userId)
+      )
+    )
+    .limit(1);
+
+  return rows[0]?.role ?? null;
+}
+
 export async function getAccessibleProjectIds(
   session: AuthUser
 ): Promise<string[]> {
   if (!session) return [];
 
-  const [owned, memberships] = await Promise.all([
+  const [owned, memberships, wsMemberships] = await Promise.all([
     db
       .select({ id: projects.id })
       .from(projects)
@@ -26,11 +54,30 @@ export async function getAccessibleProjectIds(
       .select({ projectId: projectMembers.projectId })
       .from(projectMembers)
       .where(eq(projectMembers.userId, session.uid)),
+    db
+      .select({ workspaceId: workspaceMembers.workspaceId })
+      .from(workspaceMembers)
+      .where(eq(workspaceMembers.userId, session.uid)),
   ]);
 
   const ids = new Set<string>();
   for (const row of owned) ids.add(row.id);
   for (const row of memberships) ids.add(row.projectId);
+
+  if (wsMemberships.length > 0) {
+    const workspaceIds = wsMemberships.map((row) => row.workspaceId);
+    const wsProjects = await db
+      .select({ id: projects.id })
+      .from(projects)
+      .where(
+        and(
+          inArray(projects.workspaceId, workspaceIds),
+          isNotNull(projects.workspaceId)
+        )
+      );
+    for (const row of wsProjects) ids.add(row.id);
+  }
+
   return [...ids];
 }
 
@@ -39,7 +86,7 @@ export async function getProjectAccess(
   session: AuthUser
 ): Promise<ProjectAccess | null> {
   const project = await db
-    .select({ userId: projects.userId })
+    .select({ userId: projects.userId, workspaceId: projects.workspaceId })
     .from(projects)
     .where(eq(projects.id, projectId))
     .limit(1);
@@ -49,6 +96,16 @@ export async function getProjectAccess(
 
   if (row.userId === session.uid) {
     return { role: "owner", readWrite: true };
+  }
+
+  if (row.workspaceId) {
+    const wsRole = await getWorkspaceRole(row.workspaceId, session.uid);
+    if (wsRole) {
+      return {
+        role: wsRole === "viewer" ? "viewer" : "editor",
+        readWrite: wsRole !== "viewer",
+      };
+    }
   }
 
   const member = await db
@@ -65,6 +122,36 @@ export async function getProjectAccess(
   const role = member[0]?.role;
   if (!role) return null;
   return { role, readWrite: role === "editor" };
+}
+
+export async function requireWorkspaceAccess(
+  workspaceId: string,
+  opts: { write?: boolean } = {}
+): Promise<WorkspaceAccess> {
+  const session = await requireSession();
+  const role = await getWorkspaceRole(workspaceId, session.uid);
+  if (!role) throw new NotFoundError("El espacio de trabajo");
+
+  const readWrite = role !== "viewer";
+  if (opts.write && !readWrite) {
+    throw new ForbiddenError(
+      "No tienes permisos de edición en este espacio de trabajo"
+    );
+  }
+  return { role, readWrite };
+}
+
+export async function requireWorkspaceAdmin(
+  workspaceId: string
+): Promise<void> {
+  await requireWorkspaceAccess(workspaceId);
+  const session = await requireSession();
+  const role = await getWorkspaceRole(workspaceId, session.uid);
+  if (role !== "admin") {
+    throw new ForbiddenError(
+      "Solo los administradores pueden hacer esta acción"
+    );
+  }
 }
 
 export async function requireProjectAccess(
@@ -84,11 +171,24 @@ export async function requireProjectOwner(
   projectId: string
 ): Promise<void> {
   const session = await requireSession();
-  const access = await getProjectAccess(projectId, session);
-  if (!access) throw new NotFoundError("El proyecto");
-  if (access.role !== "owner") {
-    throw new ForbiddenError("Solo el propietario puede hacer esta acción");
+  const project = await db
+    .select({ userId: projects.userId, workspaceId: projects.workspaceId })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1);
+
+  const row = project[0];
+  if (!row) throw new NotFoundError("El proyecto");
+
+  if (row.userId === session.uid) return;
+
+  if (row.workspaceId) {
+    const wsRole = await getWorkspaceRole(row.workspaceId, session.uid);
+    if (wsRole === "admin" || wsRole === "member") return;
+    throw new ForbiddenError("No tienes permisos para gestionar este proyecto");
   }
+
+  throw new ForbiddenError("Solo el propietario puede hacer esta acción");
 }
 
 export async function canAccessTask(

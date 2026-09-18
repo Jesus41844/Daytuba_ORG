@@ -3,6 +3,7 @@ import type {
   NotificationRow,
   ProjectRow,
   TaskRow,
+  WorkspaceRow,
 } from "@/db/schema";
 import type {
   AppNotification,
@@ -14,6 +15,7 @@ import type {
   TaskRecurrence,
   TaskSource,
   TaskStatus,
+  Workspace,
 } from "@/types";
 
 function toIso(value: Date | null | undefined): string | null {
@@ -69,6 +71,19 @@ export function mapProject(row: ProjectRow): Project {
     moodleCourseId: row.moodleCourseId,
     moodlePlatform: row.moodlePlatform ?? null,
     moodleUrl: row.moodleUrl,
+    workspaceId: row.workspaceId ?? null,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+export function mapWorkspace(row: WorkspaceRow): Workspace {
+  return {
+    id: row.id,
+    name: row.name,
+    icon: row.icon,
+    color: row.color,
+    createdBy: row.createdBy ?? null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };

@@ -44,9 +44,17 @@ type ProjectListProps = {
   projects: Project[];
   tasks: Task[];
   currentUserId: string;
+  workspaceId?: string | null;
+  canManageWorkspace?: boolean;
 };
 
-export function ProjectList({ projects, tasks, currentUserId }: ProjectListProps) {
+export function ProjectList({
+  projects,
+  tasks,
+  currentUserId,
+  workspaceId = null,
+  canManageWorkspace = true,
+}: ProjectListProps) {
   const router = useRouter();
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [isAdding, setIsAdding] = useState(false);
@@ -89,7 +97,7 @@ export function ProjectList({ projects, tasks, currentUserId }: ProjectListProps
     if (!name.trim()) return;
 
     startTransition(async () => {
-      await createProject({ name: name.trim() });
+      await createProject({ name: name.trim(), workspaceId: workspaceId ?? null });
       setName("");
       setIsAdding(false);
       router.refresh();
@@ -230,7 +238,10 @@ export function ProjectList({ projects, tasks, currentUserId }: ProjectListProps
             )}
           </button>
 
-          {editingId !== id && project && project.userId === currentUserId && (
+          {editingId !== id &&
+            project &&
+            (project.userId === currentUserId ||
+              (project.workspaceId != null && canManageWorkspace)) && (
             <div className="flex shrink-0 gap-0.5">
               {project.moodleCourseId && (
                 <Button
@@ -300,7 +311,7 @@ export function ProjectList({ projects, tasks, currentUserId }: ProjectListProps
     <div className="flex flex-col gap-5">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">Proyectos</h2>
-        {!isAdding && (
+        {!isAdding && canManageWorkspace && (
           <Button size="sm" variant="outline" onClick={() => setIsAdding(true)}>
             <Plus data-icon="inline-start" />
             Añadir proyecto
@@ -308,7 +319,7 @@ export function ProjectList({ projects, tasks, currentUserId }: ProjectListProps
         )}
       </div>
 
-      {isAdding && (
+      {isAdding && canManageWorkspace && (
         <form onSubmit={handleAddProject} className="flex items-center gap-2">
           <div className="relative flex-1 sm:max-w-xs">
             <Folder className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />

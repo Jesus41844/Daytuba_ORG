@@ -17,6 +17,7 @@ export type TaskSource = "manual" | "moodle";
 export type MoodlePlatform = "ecampus" | "campusvirtual" | "virtualutp";
 
 export type ProjectMemberRole = "viewer" | "editor";
+export type WorkspaceRole = "admin" | "member" | "viewer";
 
 export interface Task {
   id: string;
@@ -64,8 +65,29 @@ export interface Project {
   moodleCourseId: string | null;
   moodlePlatform: MoodlePlatform | null;
   moodleUrl: string | null;
+  workspaceId: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface Workspace {
+  id: string;
+  name: string;
+  icon: string;
+  color: string;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WorkspaceMember {
+  workspaceId: string;
+  userId: string;
+  email: string;
+  displayName: string;
+  role: WorkspaceRole;
+  joinedAt: Date;
+  isCurrentUser?: boolean;
 }
 
 export interface Category {

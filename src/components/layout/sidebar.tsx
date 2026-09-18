@@ -15,6 +15,7 @@ import {
   Settings,
   Tag,
   UserRound,
+  Users,
   PanelLeftClose,
   PanelLeftOpen,
 } from "lucide-react";
@@ -43,6 +44,10 @@ import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { SidebarSearch } from "@/components/layout/sidebar-search";
 import { NotificationBell } from "@/features/notifications/components/notification-bell";
 import { useSidebarWidth } from "@/components/layout/sidebar-provider";
+import {
+  type SidebarWorkspace,
+  WorkspaceSwitcher,
+} from "@/features/workspaces/components/workspace-switcher";
 
 const NAV_ITEMS = [
   { label: "Dashboard", icon: Home, href: "/dashboard" },
@@ -52,6 +57,7 @@ const NAV_ITEMS = [
   { label: "Calendario", icon: CalendarDays, href: "/dashboard/calendar" },
   { label: "Horario", icon: CalendarClock, href: "/dashboard/schedule" },
   { label: "Bandeja", icon: Inbox, href: "/dashboard/inbox" },
+  { label: "Espacios", icon: Users, href: "/dashboard/workspaces" },
   { label: "Configuración", icon: Settings, href: "/dashboard/settings" },
 ] as const;
 
@@ -312,11 +318,13 @@ function SidebarBody({
   user,
   compact,
   sharedProjects = [],
+  workspaces = [],
   onNavigate,
 }: {
   user: AuthUser | null;
   compact: boolean;
   sharedProjects?: Project[];
+  workspaces?: SidebarWorkspace[];
   onNavigate?: () => void;
 }) {
   const { collapse, expand } = useSidebarWidth();
@@ -363,6 +371,7 @@ function SidebarBody({
           <>
             <SidebarSearch />
             <Separator className="opacity-50" />
+            <WorkspaceSwitcher workspaces={workspaces} className="mx-2 my-2" />
           </>
         )}
         <ScrollArea className="flex-1 py-3">
@@ -383,9 +392,11 @@ function SidebarBody({
 export function Sidebar({
   user,
   sharedProjects = [],
+  workspaces = [],
 }: {
   user: AuthUser | null;
   sharedProjects?: Project[];
+  workspaces?: SidebarWorkspace[];
 }) {
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const { width, collapsed } = useSidebarWidth();
@@ -407,6 +418,7 @@ export function Sidebar({
               user={user}
               compact={false}
               sharedProjects={sharedProjects}
+              workspaces={workspaces}
               onNavigate={() => setMobileOpen(false)}
             />
           </SheetContent>
@@ -422,6 +434,7 @@ export function Sidebar({
           user={user}
           compact={collapsed}
           sharedProjects={sharedProjects}
+          workspaces={workspaces}
         />
       </aside>
     </>

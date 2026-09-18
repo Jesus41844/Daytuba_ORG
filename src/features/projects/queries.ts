@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, ne } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, ne } from "drizzle-orm";
 
 import { db } from "@/db";
 import { mapProject } from "@/db/mappers";
@@ -16,6 +16,30 @@ export async function getUserProjects(): Promise<Project[]> {
     .select()
     .from(projects)
     .where(inArray(projects.id, ids))
+    .orderBy(asc(projects.sortOrder), asc(projects.createdAt));
+
+  return rows.map(mapProject);
+}
+
+export async function getProjectsByWorkspace(
+  workspaceId: string | null
+): Promise<Project[]> {
+  const session = await requireSession();
+  const ids = await getAccessibleProjectIds(session);
+
+  if (ids.length === 0) return [];
+
+  const rows = await db
+    .select()
+    .from(projects)
+    .where(
+      and(
+        inArray(projects.id, ids),
+        workspaceId === null
+          ? isNull(projects.workspaceId)
+          : eq(projects.workspaceId, workspaceId)
+      )
+    )
     .orderBy(asc(projects.sortOrder), asc(projects.createdAt));
 
   return rows.map(mapProject);

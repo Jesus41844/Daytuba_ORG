@@ -36,6 +36,13 @@
       "when": 1789733017959,
       "tag": "0004_short_bruce_banner",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1789765925358,
+      "tag": "0005_plain_polaris",
+      "breakpoints": true
     }
   ]
 }

@@ -18,6 +18,7 @@ import type {
   TaskRecurrence,
   TaskSource,
   TaskStatus,
+  WorkspaceRole,
 } from "../types/task";
 
 const id = () =>
@@ -71,12 +72,16 @@ export const projects = pgTable(
     moodleCourseId: text("moodle_course_id"),
     moodlePlatform: text("moodle_platform").$type<MoodlePlatform>(),
     moodleUrl: text("moodle_url"),
+    workspaceId: text("workspace_id").references(() => workspaces.id, {
+      onDelete: "set null",
+    }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
   (table) => [
     index("projects_user_id_idx").on(table.userId),
     index("projects_user_sort_idx").on(table.userId, table.sortOrder),
+    index("projects_workspace_idx").on(table.workspaceId),
   ]
 );
 
@@ -236,6 +241,44 @@ export const projectMembers = pgTable(
   ]
 );
 
+export const workspaces = pgTable(
+  "workspaces",
+  {
+    id: id(),
+    name: text("name").notNull(),
+    icon: text("icon").notNull().default(""),
+    color: text("color").notNull().default(""),
+    createdBy: text("created_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [index("workspaces_created_by_idx").on(table.createdBy)]
+);
+
+export const workspaceMembers = pgTable(
+  "workspace_members",
+  {
+    workspaceId: text("workspace_id")
+      .notNull()
+      .references(() => workspaces.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    role: text("role").$type<WorkspaceRole>().notNull().default("member"),
+    invitedBy: text("invited_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.workspaceId, table.userId] }),
+    index("workspace_members_user_idx").on(table.userId),
+  ]
+);
+
 export const taskComments = pgTable(
   "task_comments",
   {
@@ -328,12 +371,45 @@ export const usersRelations = relations(users, ({ many, one }) => ({
   taskComments: many(taskComments),
   pushSubscriptions: many(pushSubscriptions),
   notificationPreferences: one(notificationPreferences),
+  workspacesCreated: many(workspaces),
+  workspaceMemberships: many(workspaceMembers),
 }));
+
+export const workspacesRelations = relations(workspaces, ({ one, many }) => ({
+  creator: one(users, {
+    fields: [workspaces.createdBy],
+    references: [users.id],
+  }),
+  members: many(workspaceMembers),
+  projects: many(projects),
+}));
+
+export const workspaceMembersRelations = relations(
+  workspaceMembers,
+  ({ one }) => ({
+    workspace: one(workspaces, {
+      fields: [workspaceMembers.workspaceId],
+      references: [workspaces.id],
+    }),
+    user: one(users, {
+      fields: [workspaceMembers.userId],
+      references: [users.id],
+    }),
+    inviter: one(users, {
+      fields: [workspaceMembers.invitedBy],
+      references: [users.id],
+    }),
+  })
+);
 
 export const projectsRelations = relations(projects, ({ one, many }) => ({
   user: one(users, { fields: [projects.userId], references: [users.id] }),
   tasks: many(tasks),
   members: many(projectMembers),
+  workspace: one(workspaces, {
+    fields: [projects.workspaceId],
+    references: [workspaces.id],
+  }),
 }));
 
 export const projectMembersRelations = relations(
@@ -398,6 +474,8 @@ export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type Session = typeof sessions.$inferSelect;
 export type ProjectRow = typeof projects.$inferSelect;
+export type WorkspaceRow = typeof workspaces.$inferSelect;
+export type WorkspaceMemberRow = typeof workspaceMembers.$inferSelect;
 export type CategoryRow = typeof categories.$inferSelect;
 export type TaskRow = typeof tasks.$inferSelect;
 export type CalendarEventRow = typeof calendarEvents.$inferSelect;

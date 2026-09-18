@@ -14,7 +14,7 @@ import {
   AppError,
   NotFoundError,
 } from "@/lib/errors";
-import { requireProjectOwner } from "@/lib/access";
+import { requireProjectOwner, requireWorkspaceAccess } from "@/lib/access";
 import {
   createProjectSchema,
   type CreateProjectInput,
@@ -73,6 +73,11 @@ export async function createProject(
     const parsed = createProjectSchema.safeParse(data);
     if (!parsed.success) return validationResult(parsed.error);
 
+    const workspaceId = parsed.data.workspaceId ?? null;
+    if (workspaceId) {
+      await requireWorkspaceAccess(workspaceId, { write: true });
+    }
+
     const inserted = await db
       .insert(projects)
       .values({
@@ -83,6 +88,7 @@ export async function createProject(
         color: parsed.data.color ?? "#6b7280",
         sortOrder: await getNextSortOrder(session.uid),
         isDefault: false,
+        workspaceId,
       })
       .returning();
 
