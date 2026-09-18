@@ -140,6 +140,7 @@ export const tasks = pgTable(
     moodleAssignmentId: text("moodle_assignment_id"),
     moodleUrl: text("moodle_url"),
     reminderAt: timestamp("reminder_at", { withTimezone: true }),
+    reminderSentAt: timestamp("reminder_sent_at", { withTimezone: true }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -297,7 +298,25 @@ export const notifications = pgTable(
   ]
 );
 
-export const usersRelations = relations(users, ({ many }) => ({
+export const notificationPreferences = pgTable(
+  "notification_preferences",
+  {
+    id: id(),
+    userId: text("user_id")
+      .notNull()
+      .unique()
+      .references(() => users.id, { onDelete: "cascade" }),
+    reminderPush: boolean("reminder_push").notNull().default(true),
+    reminderEmail: boolean("reminder_email").notNull().default(false),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    index("notification_preferences_user_idx").on(table.userId),
+  ]
+);
+
+export const usersRelations = relations(users, ({ many, one }) => ({
   sessions: many(sessions),
   projects: many(projects),
   categories: many(categories),
@@ -308,6 +327,7 @@ export const usersRelations = relations(users, ({ many }) => ({
   projectMemberships: many(projectMembers),
   taskComments: many(taskComments),
   pushSubscriptions: many(pushSubscriptions),
+  notificationPreferences: one(notificationPreferences),
 }));
 
 export const projectsRelations = relations(projects, ({ one, many }) => ({
@@ -364,6 +384,16 @@ export const pushSubscriptionsRelations = relations(
   })
 );
 
+export const notificationPreferencesRelations = relations(
+  notificationPreferences,
+  ({ one }) => ({
+    user: one(users, {
+      fields: [notificationPreferences.userId],
+      references: [users.id],
+    }),
+  })
+);
+
 export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type Session = typeof sessions.$inferSelect;
@@ -377,3 +407,5 @@ export type ProjectMemberRow = typeof projectMembers.$inferSelect;
 export type TaskCommentRow = typeof taskComments.$inferSelect;
 export type PushSubscriptionRow = typeof pushSubscriptions.$inferSelect;
 export type NotificationRow = typeof notifications.$inferSelect;
+export type NotificationPreferenceRow =
+  typeof notificationPreferences.$inferSelect;

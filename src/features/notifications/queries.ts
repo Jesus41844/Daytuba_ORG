@@ -4,7 +4,7 @@ import { and, desc, eq, isNull } from "drizzle-orm";
 
 import { db } from "@/db";
 import { mapNotification } from "@/db/mappers";
-import { notifications } from "@/db/schema";
+import { notifications, notificationPreferences } from "@/db/schema";
 import type { AppNotification } from "@/types";
 import { requireSession } from "@/lib/auth/session";
 
@@ -37,4 +37,25 @@ export async function getUnreadNotificationCount(): Promise<number> {
     );
 
   return rows.length;
+}
+
+export type ReminderPreferences = {
+  reminderPush: boolean;
+  reminderEmail: boolean;
+};
+
+export async function getReminderPreferences(): Promise<ReminderPreferences> {
+  const session = await requireSession();
+
+  const rows = await db
+    .select()
+    .from(notificationPreferences)
+    .where(eq(notificationPreferences.userId, session.uid))
+    .limit(1);
+
+  const row = rows[0];
+  return {
+    reminderPush: row?.reminderPush ?? true,
+    reminderEmail: row?.reminderEmail ?? false,
+  };
 }

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { Lock, Palette, UserRound, BookOpen } from "lucide-react";
+import { Lock, Palette, UserRound, BookOpen, BellRing } from "lucide-react";
 
 import { getSession } from "@/lib/auth/session";
 import { PageHeader } from "@/components/layout/page-header";
@@ -14,6 +14,8 @@ import {
 import { ProfileForm } from "@/features/auth/components/profile-form";
 import { PasswordForm } from "@/features/auth/components/password-form";
 import { MoodleSettings } from "@/features/moodle/components/moodle-settings";
+import { ReminderPreferences } from "@/features/notifications/components/reminder-preferences";
+import { getReminderPreferences } from "@/features/notifications/queries";
 
 export const metadata: Metadata = {
   title: "Configuración | Daytuba Tasks",
@@ -22,6 +24,8 @@ export const metadata: Metadata = {
 export default async function SettingsPage() {
   const session = await getSession();
   if (!session) redirect("/login");
+
+  const reminderPreferences = await getReminderPreferences();
 
   return (
     <div className="flex flex-col gap-4 sm:gap-6">
@@ -78,6 +82,21 @@ export default async function SettingsPage() {
         </CardHeader>
         <CardContent>
           <MoodleSettings />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <BellRing className="size-5 text-muted-foreground" />
+          </div>
+          <CardTitle className="text-base">Recordatorios</CardTitle>
+          <CardDescription>
+            Elige cómo quieres recibir los recordatorios de tus tareas.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ReminderPreferences initial={reminderPreferences} />
         </CardContent>
       </Card>
 

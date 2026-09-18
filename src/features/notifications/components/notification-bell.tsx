@@ -4,6 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import {
   Bell,
+  BellRing,
   CheckCheck,
   ClipboardList,
   Info,
@@ -36,6 +37,7 @@ const TYPE_ICONS: Record<AppNotification["type"], React.ElementType> = {
   invite: UserPlus,
   comment: MessageSquare,
   assignment: ClipboardList,
+  reminder: BellRing,
   info: Info,
 };
 

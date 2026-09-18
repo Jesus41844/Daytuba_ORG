@@ -91,6 +91,7 @@ export type NotificationType =
   | "invite"
   | "comment"
   | "assignment"
+  | "reminder"
   | "info";
 
 export interface AppNotification {

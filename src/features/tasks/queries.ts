@@ -10,7 +10,6 @@ import {
   or,
   lt,
   notInArray,
-  isNotNull,
 } from "drizzle-orm";
 
 import { db } from "@/db";
@@ -24,8 +23,6 @@ import {
   getAccessibleProjectIds,
   getProjectAccess,
 } from "@/lib/access";
-
-const REMINDER_WINDOW_MS = 10 * 60 * 1000;
 
 export type TaskFilters = {
   projectId?: string;
@@ -152,27 +149,6 @@ export async function getTasksForCalendar(): Promise<Task[]> {
     .map(mapTask)
     .filter((task) => task.dueDate != null)
     .sort((a, b) => (a.dueDate ?? "").localeCompare(b.dueDate ?? ""));
-}
-
-export async function getTasksWithReminders(): Promise<Task[]> {
-  const session = await requireSession();
-  const accessibleProjects = await getAccessibleProjectIds(session);
-
-  const rows = await db
-    .select()
-    .from(tasks)
-    .where(
-      and(
-        buildTaskVisibility(session.uid, accessibleProjects),
-        eq(tasks.isArchived, false),
-        isNotNull(tasks.reminderAt),
-        gt(tasks.reminderAt, new Date(Date.now() - REMINDER_WINDOW_MS)),
-        notInArray(tasks.status, ["completed", "cancelled"])
-      )
-    )
-    .orderBy(asc(tasks.reminderAt));
-
-  return rows.map(mapTask);
 }
 
 export async function searchTasks(query: string): Promise<Task[]> {

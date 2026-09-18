@@ -306,8 +306,10 @@ export async function updateTask(
       values.pdfUrl = parsed.data.pdfUrl ?? null;
     if (parsed.data.pdfName !== undefined)
       values.pdfName = parsed.data.pdfName ?? null;
-    if (parsed.data.reminderAt !== undefined)
+    if (parsed.data.reminderAt !== undefined) {
       values.reminderAt = toDateOrNull(parsed.data.reminderAt ?? null);
+      values.reminderSentAt = null;
+    }
 
     values.updatedAt = new Date();
 
