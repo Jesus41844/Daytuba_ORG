@@ -73,7 +73,9 @@ export function WorkspaceSwitcher({
       : "Personal";
 
   function navigateTo(href: string) {
-    if (href !== pathname) router.push(href);
+    const search = searchParams.toString();
+    const current = search ? `${pathname}?${search}` : pathname;
+    if (href !== current) router.push(href);
   }
 
   return (
