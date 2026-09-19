@@ -32,6 +32,10 @@ export function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|api/auth|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+    // `api/cron` queda fuera: esas rutas se autentican con el header
+    // Authorization (CRON_SECRET), no con cookie de sesión. Si el proxy las
+    // ve, las redirige a /login con un 307 y el handler nunca corre — que es
+    // lo que le pasaba al barrido diario de recordatorios en Vercel.
+    "/((?!_next/static|_next/image|favicon.ico|api/auth|api/cron|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };
