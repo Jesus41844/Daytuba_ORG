@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useCallback } from "react";
+import { useMemo, useCallback, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import type { Task } from "@/types";
@@ -60,7 +60,19 @@ export function WeekView({
   onEventClick,
 }: WeekViewProps) {
   const router = useRouter();
+  const scrollRef = useRef<HTMLDivElement>(null);
   const weekDates = useMemo(() => getWeekDates(currentDate), [currentDate]);
+
+  useEffect(() => {
+    if (!scrollRef.current) return;
+    const now = new Date();
+    const minutes = now.getHours() * 60 + now.getMinutes();
+    const top = minutesToPixels(minutes, HOUR_HEIGHT);
+    const container = scrollRef.current;
+    const containerHeight = container.clientHeight;
+    const scrollTop = top - containerHeight / 2;
+    container.scrollTop = Math.max(0, scrollTop);
+  }, []);
 
   const dayColumns = useMemo(() => {
     return weekDates.map((date) => {
@@ -134,7 +146,7 @@ export function WeekView({
         </div>
       </div>
 
-      <div className="flex-1 min-h-0 overflow-auto">
+      <div ref={scrollRef} className="flex-1 min-h-0 overflow-auto">
         <div className="grid grid-cols-[4rem_1fr] min-h-0" style={{ height: contentHeight }}>
           <div className="relative">
             {HOURS.map((hour) => (
