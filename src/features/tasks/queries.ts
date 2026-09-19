@@ -170,9 +170,12 @@ export async function getOverdueTasks(): Promise<Task[]> {
 }
 
 /**
- * Cuenta de tareas vencidas + para hoy, para el badge del ícono de la PWA
- * (navigator.setAppBadge). Usa el mismo criterio que las tarjetas
- * "Vencidas"/"Para hoy" del dashboard para que el número coincida.
+ * Cuenta de tareas accionables ya vencidas o que vencen hoy, para el badge
+ * del ícono de la PWA (navigator.setAppBadge).
+ *
+ * Es la UNIÓN de las tarjetas "Vencidas" y "Para hoy" del dashboard, no su
+ * suma: una tarea que vencía hoy más temprano cuenta en ambas tarjetas pero
+ * una sola vez aquí.
  */
 export async function getPendingBadgeCount(): Promise<number> {
   const session = await requireSession();

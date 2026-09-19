@@ -63,20 +63,33 @@ async function registerBackgroundSync(): Promise<void> {
   }
 }
 
+/**
+ * Encola el estado final deseado para una tarea. Si ya había una mutación
+ * pendiente para esa tarea la reemplaza en vez de apilar otra: dos cambios
+ * offline seguidos comparten el mismo `baseUpdatedAt`, así que apilarlos
+ * haría que el segundo chocara contra el primero al sincronizar y el usuario
+ * vería un "conflicto" contra su propio cambio.
+ */
 export async function enqueueStatusMutation(input: {
   taskId: string;
   status: Task["status"];
   baseUpdatedAt: string;
 }): Promise<void> {
   const db = await getDB();
-  const mutation: PendingStatusMutation = {
-    id: crypto.randomUUID(),
-    taskId: input.taskId,
-    status: input.status,
-    baseUpdatedAt: input.baseUpdatedAt,
-    createdAt: Date.now(),
-    attempts: 0,
-  };
+  const pending = await getPendingMutations();
+  const existing = pending.find((m) => m.taskId === input.taskId);
+
+  const mutation: PendingStatusMutation = existing
+    ? { ...existing, status: input.status }
+    : {
+        id: crypto.randomUUID(),
+        taskId: input.taskId,
+        status: input.status,
+        baseUpdatedAt: input.baseUpdatedAt,
+        createdAt: Date.now(),
+        attempts: 0,
+      };
+
   await db.put(STORE, mutation);
   await registerBackgroundSync();
 }
@@ -85,13 +98,6 @@ export async function getPendingMutations(): Promise<PendingStatusMutation[]> {
   const db = await getDB();
   const all: PendingStatusMutation[] = await db.getAll(STORE);
   return all.sort((a, b) => a.createdAt - b.createdAt);
-}
-
-export async function hasPendingMutationForTask(
-  taskId: string
-): Promise<boolean> {
-  const pending = await getPendingMutations();
-  return pending.some((m) => m.taskId === taskId);
 }
 
 async function removeMutation(id: string): Promise<void> {
@@ -187,13 +193,19 @@ function isLikelyOffline(error: unknown): boolean {
  * la Server Action); si falla por red, la encola en vez de perder el cambio.
  * Los llamadores deben aplicar su propia actualización optimista de UI —
  * este módulo no conoce React.
+ *
+ * El clic directo va SIN `expectedUpdatedAt` a propósito: las props del
+ * cliente pueden estar desactualizadas (el cron de Moodle o un colaborador
+ * tocaron la tarea) y el usuario espera que marcar la casilla funcione igual.
+ * El chequeo de versión solo aplica al reintentar desde la cola, donde sí
+ * hace falta para no pisar a ciegas un cambio hecho mientras estabas offline.
  */
 export async function applyTaskStatusChange(
   task: Pick<Task, "id" | "updatedAt">,
   status: Task["status"]
 ): Promise<StatusChangeResult> {
   try {
-    const result = await updateTaskStatus(task.id, status, task.updatedAt);
+    const result = await updateTaskStatus(task.id, status);
     if (result.success) return { outcome: "applied", task: result.data };
     return { outcome: "error", message: result.error };
   } catch (error) {

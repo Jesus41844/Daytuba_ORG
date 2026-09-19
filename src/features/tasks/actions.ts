@@ -222,23 +222,13 @@ export async function createTask(
 
 export async function updateTask(
   id: string,
-  data: UpdateTaskInput,
-  expectedUpdatedAt?: string
+  data: UpdateTaskInput
 ): Promise<ActionResult<Task>> {
   try {
     const parsed = updateTaskSchema.safeParse(data);
     if (!parsed.success) return validationResult(parsed.error);
 
     const { row: existing, session } = await findUserTask(id, { write: true });
-
-    if (
-      expectedUpdatedAt &&
-      existing.updatedAt.toISOString() !== expectedUpdatedAt
-    ) {
-      throw new ConflictError(
-        "Esta tarea cambió en el servidor desde tu última edición."
-      );
-    }
 
     const values: Partial<typeof tasks.$inferInsert> = {};
 

@@ -55,6 +55,27 @@ describe("cola de mutaciones offline", () => {
     });
   });
 
+  it("fusiona dos cambios offline de la misma tarea en una sola mutación", async () => {
+    await enqueueStatusMutation({
+      taskId: TASK.id,
+      status: "completed",
+      baseUpdatedAt: TASK.updatedAt,
+    });
+    await enqueueStatusMutation({
+      taskId: TASK.id,
+      status: "pending",
+      baseUpdatedAt: TASK.updatedAt,
+    });
+
+    const pending = await getPendingMutations();
+    expect(pending).toHaveLength(1);
+    // Gana el último estado, contra la versión que el usuario tenía al inicio.
+    expect(pending[0]).toMatchObject({
+      status: "pending",
+      baseUpdatedAt: TASK.updatedAt,
+    });
+  });
+
   it("aplica la mutación y la saca de la cola cuando el servidor acepta", async () => {
     updateTaskStatus.mockResolvedValue({ success: true, data: { id: TASK.id } });
     await enqueueStatusMutation({
@@ -162,6 +183,15 @@ describe("applyTaskStatusChange", () => {
 
     expect(result).toMatchObject({ outcome: "applied" });
     expect(await getPendingMutations()).toHaveLength(0);
+  });
+
+  it("no manda expectedUpdatedAt en el clic directo (props viejas no deben fallar)", async () => {
+    updateTaskStatus.mockResolvedValue({ success: true, data: { id: TASK.id } });
+
+    await applyTaskStatusChange(TASK, "completed");
+
+    // Solo los reintentos desde la cola llevan chequeo de versión.
+    expect(updateTaskStatus).toHaveBeenCalledWith(TASK.id, "completed");
   });
 
   it("encola el cambio cuando la llamada falla por red", async () => {
