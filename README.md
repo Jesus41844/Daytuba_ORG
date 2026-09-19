@@ -118,7 +118,9 @@ push_subscriptions(id, user_id FK, endpoint UNIQUE, p256dh, auth)
 Copiar `.env.example` a `.env.local` y completar:
 
 ```
-DATABASE_URL=postgres://usuario:password@host:5432/utp_tasks
+# Supabase: transaction pooler (:6543) para la app, session pooler (:5432)
+# o conexión directa para migraciones con drizzle-kit.
+DATABASE_URL=postgres://postgres.<ref>:password@aws-0-<region>.pooler.supabase.com:6543/postgres?sslmode=require
 BLOB_READ_WRITE_TOKEN=<token del store de Vercel Blob>
 MOODLE_ENCRYPTION_KEY=<hex 32 bytes>   # openssl rand -hex 32
 CRON_SECRET=<hex 24 bytes>             # openssl rand -hex 24
@@ -128,14 +130,18 @@ MOODLE_SYNC_CRON_SCHEDULE=0 11 * * *   # sync de Moodle en UTC (= 06:00 Panamá)
 
 ## Desarrollo
 
-```bash
-# Levantar Postgres
-docker compose -f docker-compose.dev.yml up -d
+Desarrollo va **contra Supabase**, la misma base que producción (el Postgres
+local en Docker quedó descartado). Trae las variables desde Vercel con
+`vercel env pull` o copia la cadena desde el dashboard de Supabase
+(Project Settings → Database → Connection string).
 
+```bash
 # Instalar dependencias
 npm install
 
 # Aplicar migraciones
+# Ojo: usa la cadena del session pooler (:5432) o la conexión directa.
+# El transaction pooler (:6543) no soporta lo que necesita drizzle-kit.
 npm run db:migrate
 
 # Servidor de desarrollo (Turbopack)
