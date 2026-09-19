@@ -45,4 +45,9 @@ export class ValidationError extends AppError {
 
 export type ActionResult<T = void> =
   | { success: true; data: T }
-  | { success: false; error: string; errors?: Record<string, string[]> };
+  | {
+      success: false;
+      error: string;
+      errors?: Record<string, string[]>;
+      code?: string;
+    };

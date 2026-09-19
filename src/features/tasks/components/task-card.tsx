@@ -1,6 +1,6 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { format, isBefore, startOfDay } from "date-fns";
@@ -17,6 +17,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { toast } from "@/components/ui/toast";
+import { applyTaskStatusChange } from "@/lib/offline-queue";
 import { deleteTask, updateTask } from "../actions";
 import type { Task, Category } from "@/types";
 
@@ -47,19 +49,39 @@ const PRIORITY_STYLES: Record<string, string> = {
 export function TaskCard({ task, categories = [], onEdit }: TaskCardProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const [localStatus, setLocalStatus] = useState<Task["status"] | null>(null);
+  const status = localStatus ?? task.status;
 
   const href = `/dashboard/tasks/${task.id}`;
   const isOverdue =
     Boolean(task.dueDate) &&
-    task.status !== "completed" &&
-    task.status !== "cancelled" &&
+    status !== "completed" &&
+    status !== "cancelled" &&
     isBefore(new Date(task.dueDate!), startOfDay(new Date()));
 
   function handleToggleComplete() {
+    const newStatus = status === "completed" ? "pending" : "completed";
+    setLocalStatus(newStatus);
+
     startTransition(async () => {
-      const newStatus = task.status === "completed" ? "pending" : "completed";
-      await updateTask(task.id, { status: newStatus });
-      router.refresh();
+      const outcome = await applyTaskStatusChange(task, newStatus);
+      if (outcome.outcome === "applied") {
+        setLocalStatus(null);
+        router.refresh();
+      } else if (outcome.outcome === "queued") {
+        toast.add({
+          title: "Cambio guardado sin conexión",
+          description: "Se sincronizará cuando vuelva la conexión.",
+          type: "warning",
+        });
+      } else {
+        setLocalStatus(null);
+        toast.add({
+          title: "No se pudo actualizar la tarea",
+          description: outcome.message,
+          type: "error",
+        });
+      }
     });
   }
 
@@ -93,7 +115,7 @@ export function TaskCard({ task, categories = [], onEdit }: TaskCardProps) {
             >
               {task.priority}
             </Badge>
-            <Badge variant="secondary">{STATUS_LABELS[task.status] ?? task.status}</Badge>
+            <Badge variant="secondary">{STATUS_LABELS[status] ?? status}</Badge>
             {categories.map((category) => (
               <Badge
                 key={category.id}
@@ -111,7 +133,7 @@ export function TaskCard({ task, categories = [], onEdit }: TaskCardProps) {
               size="icon"
               className="size-7"
               disabled={isPending}
-              aria-label={task.status === "completed" ? "Desmarcar como completada" : "Marcar como completada"}
+              aria-label={status === "completed" ? "Desmarcar como completada" : "Marcar como completada"}
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -121,7 +143,7 @@ export function TaskCard({ task, categories = [], onEdit }: TaskCardProps) {
               <div
                 className={cn(
                   "size-4 rounded-full border-2 transition-colors",
-                  task.status === "completed"
+                  status === "completed"
                     ? "border-primary bg-primary"
                     : "border-muted-foreground/50"
                 )}
@@ -189,8 +211,8 @@ export function TaskCard({ task, categories = [], onEdit }: TaskCardProps) {
         )}
 
         {task.reminderAt &&
-          task.status !== "completed" &&
-          task.status !== "cancelled" && (
+          status !== "completed" &&
+          status !== "cancelled" && (
             <span
               suppressHydrationWarning
               className="flex items-center gap-1 text-xs text-muted-foreground"

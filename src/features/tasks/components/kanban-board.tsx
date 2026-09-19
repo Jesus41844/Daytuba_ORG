@@ -4,7 +4,8 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import type { Category, Task, TaskStatus } from "@/types";
-import { updateTaskStatus } from "../actions";
+import { toast } from "@/components/ui/toast";
+import { applyTaskStatusChange } from "@/lib/offline-queue";
 import { KanbanCard } from "./kanban-card";
 
 type KanbanBoardProps = {
@@ -25,6 +26,22 @@ export function KanbanBoard({ tasks, categories = [] }: KanbanBoardProps) {
   const [isPending, startTransition] = useTransition();
   const [dragOverStatus, setDragOverStatus] = useState<TaskStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [statusOverrides, setStatusOverrides] = useState<
+    Record<string, TaskStatus>
+  >({});
+
+  function clearOverride(taskId: string) {
+    setStatusOverrides((prev) => {
+      if (!(taskId in prev)) return prev;
+      const next = { ...prev };
+      delete next[taskId];
+      return next;
+    });
+  }
+
+  function effectiveStatus(task: Task): TaskStatus {
+    return statusOverrides[task.id] ?? task.status;
+  }
 
   function handleDragStart(e: React.DragEvent, task: Task) {
     e.dataTransfer.setData("text/plain", task.id);
@@ -42,15 +59,27 @@ export function KanbanBoard({ tasks, categories = [] }: KanbanBoardProps) {
     setDragOverStatus(null);
     const taskId = e.dataTransfer.getData("text/plain");
     if (!taskId) return;
+    const task = tasks.find((t) => t.id === taskId);
+    if (!task || effectiveStatus(task) === status) return;
 
     setError(null);
+    setStatusOverrides((prev) => ({ ...prev, [taskId]: status }));
+
     startTransition(async () => {
-      const result = await updateTaskStatus(taskId, status);
-      if (!result.success) {
-        setError(result.error);
-        return;
+      const outcome = await applyTaskStatusChange(task, status);
+      if (outcome.outcome === "applied") {
+        clearOverride(taskId);
+        router.refresh();
+      } else if (outcome.outcome === "queued") {
+        toast.add({
+          title: "Cambio guardado sin conexión",
+          description: "Se sincronizará cuando vuelva la conexión.",
+          type: "warning",
+        });
+      } else {
+        clearOverride(taskId);
+        setError(outcome.message);
       }
-      router.refresh();
     });
   }
 
@@ -59,7 +88,9 @@ export function KanbanBoard({ tasks, categories = [] }: KanbanBoardProps) {
       {error && <p className="text-xs text-destructive">{error}</p>}
       <div className="flex gap-3 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {STATUS_COLUMNS.map((column) => {
-          const columnTasks = tasks.filter((t) => t.status === column.value);
+          const columnTasks = tasks.filter(
+            (t) => effectiveStatus(t) === column.value
+          );
           const isOver = dragOverStatus === column.value;
 
           return (

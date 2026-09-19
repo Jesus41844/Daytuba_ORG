@@ -18,6 +18,7 @@ import { createNotification } from "@/features/notifications/service";
 import {
   type ActionResult,
   AppError,
+  ConflictError,
   NotFoundError,
 } from "@/lib/errors";
 import {
@@ -29,7 +30,7 @@ import {
 
 function toActionError(error: unknown): ActionResult<never> {
   if (error instanceof AppError) {
-    return { success: false, error: error.message };
+    return { success: false, error: error.message, code: error.code };
   }
   console.error(error);
   return { success: false, error: "Ocurrió un error inesperado" };
@@ -221,13 +222,23 @@ export async function createTask(
 
 export async function updateTask(
   id: string,
-  data: UpdateTaskInput
+  data: UpdateTaskInput,
+  expectedUpdatedAt?: string
 ): Promise<ActionResult<Task>> {
   try {
     const parsed = updateTaskSchema.safeParse(data);
     if (!parsed.success) return validationResult(parsed.error);
 
     const { row: existing, session } = await findUserTask(id, { write: true });
+
+    if (
+      expectedUpdatedAt &&
+      existing.updatedAt.toISOString() !== expectedUpdatedAt
+    ) {
+      throw new ConflictError(
+        "Esta tarea cambió en el servidor desde tu última edición."
+      );
+    }
 
     const values: Partial<typeof tasks.$inferInsert> = {};
 
@@ -359,10 +370,20 @@ export async function deleteTask(id: string): Promise<ActionResult> {
 
 export async function updateTaskStatus(
   id: string,
-  status: Task["status"]
+  status: Task["status"],
+  expectedUpdatedAt?: string
 ): Promise<ActionResult<Task>> {
   try {
-    await findUserTask(id, { write: true });
+    const { row: existing } = await findUserTask(id, { write: true });
+
+    if (
+      expectedUpdatedAt &&
+      existing.updatedAt.toISOString() !== expectedUpdatedAt
+    ) {
+      throw new ConflictError(
+        "Esta tarea cambió en el servidor desde tu última edición."
+      );
+    }
 
     const updated = await db
       .update(tasks)
@@ -376,6 +397,8 @@ export async function updateTaskStatus(
 
     revalidatePath("/dashboard/tasks");
     revalidatePath(`/dashboard/tasks/${id}`);
+    revalidatePath("/dashboard/projects");
+    revalidatePath("/dashboard/inbox");
     revalidatePath("/dashboard");
     return { success: true, data: mapTask(updated[0]!) };
   } catch (error) {

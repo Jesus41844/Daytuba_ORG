@@ -122,6 +122,23 @@ self.addEventListener("push", (event) => {
   event.waitUntil(self.registration.showNotification(title, options));
 });
 
+// Background Sync (Chrome/Edge únicamente, no existe en Safari/iOS): el SW no
+// tiene acceso fácil a cookies/contexto de request para llamar Server
+// Actions directamente, así que solo avisa a las pestañas abiertas para que
+// ellas vacíen la cola de IndexedDB. El mecanismo portable de verdad (que
+// también cubre iOS) son los listeners de "online"/"visibilitychange" en
+// OfflineSyncProvider, del lado de la página.
+self.addEventListener("sync", (event) => {
+  if (event.tag !== "flush-task-queue") return;
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
+      for (const client of clients) {
+        client.postMessage({ type: "FLUSH_QUEUE" });
+      }
+    })
+  );
+});
+
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
 
