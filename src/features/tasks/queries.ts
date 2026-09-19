@@ -8,8 +8,10 @@ import {
   gt,
   ilike,
   inArray,
+  isNotNull,
   or,
   lt,
+  lte,
   notInArray,
   isNull,
 } from "drizzle-orm";
@@ -165,6 +167,34 @@ export async function getOverdueTasks(): Promise<Task[]> {
     .orderBy(asc(tasks.dueDate));
 
   return rows.map(mapTask);
+}
+
+/**
+ * Cuenta de tareas vencidas + para hoy, para el badge del ícono de la PWA
+ * (navigator.setAppBadge). Usa el mismo criterio que las tarjetas
+ * "Vencidas"/"Para hoy" del dashboard para que el número coincida.
+ */
+export async function getPendingBadgeCount(): Promise<number> {
+  const session = await requireSession();
+  const accessibleProjects = await getAccessibleProjectIds(session);
+
+  const endOfToday = new Date();
+  endOfToday.setHours(23, 59, 59, 999);
+
+  const rows = await db
+    .select({ id: tasks.id })
+    .from(tasks)
+    .where(
+      and(
+        buildTaskVisibility(session.uid, accessibleProjects),
+        eq(tasks.isArchived, false),
+        isNotNull(tasks.dueDate),
+        lte(tasks.dueDate, endOfToday),
+        notInArray(tasks.status, ["completed", "cancelled"])
+      )
+    );
+
+  return rows.length;
 }
 
 export async function getArchivedTasks(): Promise<Task[]> {

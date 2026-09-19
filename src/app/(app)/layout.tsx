@@ -9,6 +9,7 @@ import { SidebarProvider } from "@/components/layout/sidebar-provider";
 import { ToasterWrapper } from "@/components/providers/toaster-wrapper";
 import { PushProvider } from "@/components/providers/push-provider";
 import { PwaProvider } from "@/components/providers/pwa-provider";
+import { BadgeProvider } from "@/components/providers/badge-provider";
 import { SidebarWidthUpdater } from "@/components/layout/sidebar-width-updater";
 
 export default async function AppLayout({
@@ -44,6 +45,7 @@ export default async function AppLayout({
         <ToasterWrapper />
         <PushProvider />
         <PwaProvider />
+        <BadgeProvider />
       </div>
     </SidebarProvider>
   );
