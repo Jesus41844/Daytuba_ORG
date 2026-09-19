@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Building2, ChevronsUpDown, Settings2, UserRound } from "lucide-react";
+import { Building2, Check, ChevronsUpDown, Settings2, UserRound } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -10,8 +10,6 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -73,9 +71,7 @@ export function WorkspaceSwitcher({
       : "Personal";
 
   function navigateTo(href: string) {
-    const search = searchParams.toString();
-    const current = search ? `${pathname}?${search}` : pathname;
-    if (href !== current) router.push(href);
+    router.push(href);
   }
 
   return (
@@ -105,29 +101,38 @@ export function WorkspaceSwitcher({
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-64">
         <DropdownMenuLabel>Espacios de trabajo</DropdownMenuLabel>
-        <DropdownMenuRadioGroup value={activeWsId ?? "personal"}>
-          <DropdownMenuRadioItem
-            value="personal"
+        <div className="flex flex-col gap-0.5 p-1">
+          <DropdownMenuItem
             onSelect={() => navigateTo("/dashboard/projects")}
-            className="gap-2"
+            className="flex items-center justify-between gap-2"
           >
-            <PersonalDot isWorkspacesPage={isWorkspacesPage} />
-            <span className="flex-1">Personal</span>
-          </DropdownMenuRadioItem>
-          {workspaces.map((ws) => (
-            <DropdownMenuRadioItem
-              key={ws.id}
-              value={ws.id}
-              onSelect={() =>
-                navigateTo(`/dashboard/projects?ws=${ws.id}`)
-              }
-              className="gap-2"
-            >
-              <WorkspaceDot color={ws.color} />
-              <span className="min-w-0 flex-1 truncate">{ws.name}</span>
-            </DropdownMenuRadioItem>
-          ))}
-        </DropdownMenuRadioGroup>
+            <div className="flex items-center gap-2">
+              <PersonalDot isWorkspacesPage={isWorkspacesPage} />
+              <span>Personal</span>
+            </div>
+            {activeWsId === null && !isWorkspacesPage && (
+              <Check className="size-4 text-primary" />
+            )}
+          </DropdownMenuItem>
+          {workspaces.map((ws) => {
+            const isActive = ws.id === activeWsId;
+            return (
+              <DropdownMenuItem
+                key={ws.id}
+                onSelect={() =>
+                  navigateTo(`/dashboard/projects?ws=${ws.id}`)
+                }
+                className="flex items-center justify-between gap-2"
+              >
+                <div className="flex min-w-0 items-center gap-2">
+                  <WorkspaceDot color={ws.color} />
+                  <span className="min-w-0 flex-1 truncate">{ws.name}</span>
+                </div>
+                {isActive && <Check className="size-4 text-primary" />}
+              </DropdownMenuItem>
+            );
+          })}
+        </div>
         <DropdownMenuSeparator />
         <DropdownMenuItem
           onSelect={() => navigateTo("/dashboard/workspaces")}
