@@ -259,10 +259,7 @@ export function WeekView({
               const now = new Date();
               const minutes = now.getHours() * 60 + now.getMinutes();
               const top = minutesToPixels(minutes, HOUR_HEIGHT);
-              const currentDow = now.getDay();
-              const colIndex = dayColumns.findIndex(
-                (c) => c.date.getDay() === currentDow
-              );
+              const colIndex = dayColumns.findIndex((c) => isToday(c.date));
               if (colIndex === -1) return null;
               const colPercent = (colIndex / 7) * 100;
               return (
