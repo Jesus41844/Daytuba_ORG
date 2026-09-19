@@ -39,11 +39,13 @@ services:
       - web
     environment:
       CRON_SECRET: ${CRON_SECRET:?Set CRON_SECRET in .env}
-      CRON_SCHEDULE: ${REMINDERS_CRON_SCHEDULE:-0 14 * * *}
+      REMINDERS_CRON_SCHEDULE: ${REMINDERS_CRON_SCHEDULE:-0 14 * * *}
       REMINDERS_URL: http://web:3000/api/cron/reminders
+      MOODLE_SYNC_CRON_SCHEDULE: ${MOODLE_SYNC_CRON_SCHEDULE:-0 11 * * *}
+      MOODLE_SYNC_URL: http://web:3000/api/cron/moodle-sync
     volumes:
-      - ./scripts/cron-reminders.sh:/cron-reminders.sh:ro
-    command: ["/bin/sh", "/cron-reminders.sh"]
+      - ./scripts/cron-jobs.sh:/cron-jobs.sh:ro
+    command: ["/bin/sh", "/cron-jobs.sh"]
 
 volumes:
   pgdata:
