@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -100,8 +101,10 @@ export function WorkspaceSwitcher({
         <ChevronsUpDown className="size-3.5 shrink-0 text-muted-foreground" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-64">
-        <DropdownMenuLabel>Espacios de trabajo</DropdownMenuLabel>
-        <div className="flex flex-col gap-0.5 p-1">
+        {/* El label es un Menu.GroupLabel de Base UI: lanza si no está dentro
+            de un Menu.Group, así que el grupo no es decorativo. */}
+        <DropdownMenuGroup className="flex flex-col gap-0.5 p-1">
+          <DropdownMenuLabel>Espacios de trabajo</DropdownMenuLabel>
           <DropdownMenuItem
             onSelect={() => navigateTo("/dashboard/projects")}
             className="flex items-center justify-between gap-2"
@@ -132,7 +135,7 @@ export function WorkspaceSwitcher({
               </DropdownMenuItem>
             );
           })}
-        </div>
+        </DropdownMenuGroup>
         <DropdownMenuSeparator />
         <DropdownMenuItem
           onSelect={() => navigateTo("/dashboard/workspaces")}
