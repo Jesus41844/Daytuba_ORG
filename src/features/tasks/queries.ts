@@ -14,13 +14,15 @@ import {
   lte,
   notInArray,
   isNull,
+  type SQL,
 } from "drizzle-orm";
 
 import { db } from "@/db";
 import { mapTask } from "@/db/mappers";
 import { projectMembers, projects, tasks, users, workspaceMembers } from "@/db/schema";
 import type { Task } from "@/types";
-import { requireSession } from "@/lib/auth/session";
+import { requireSession, type AuthUser } from "@/lib/auth/session";
+import { getActiveWorkspaceId } from "@/lib/active-workspace";
 import {
   buildTaskVisibility,
   canAccessTask,
@@ -50,40 +52,17 @@ export async function getUserTasks(
   const session = await requireSession();
   const accessibleProjects = await getAccessibleProjectIds(session);
 
+  const visibilityCondition = await buildWorkspaceVisibility(
+    session,
+    accessibleProjects,
+    filters?.workspaceId
+  );
+  if (visibilityCondition === null) return [];
+
   const conditions = [
     eq(tasks.isArchived, false),
+    visibilityCondition,
   ];
-
-  if (filters?.workspaceId !== undefined) {
-    const queuedIds = await getProjectIdsByWorkspace(
-      session.uid,
-      accessibleProjects,
-      filters.workspaceId
-    );
-
-    if (queuedIds.length === 0 && filters.workspaceId !== null) {
-      return [];
-    }
-
-    if (filters.workspaceId === null) {
-      if (queuedIds.length > 0) {
-        conditions.push(
-          or(
-            inArray(tasks.projectId, queuedIds),
-            and(isNull(tasks.projectId), eq(tasks.userId, session.uid))
-          )!
-        );
-      } else {
-        conditions.push(
-          and(isNull(tasks.projectId), eq(tasks.userId, session.uid))!
-        );
-      }
-    } else if (queuedIds.length > 0) {
-      conditions.push(inArray(tasks.projectId, queuedIds));
-    }
-  } else {
-    conditions.push(buildTaskVisibility(session.uid, accessibleProjects));
-  }
 
   if (filters?.projectId) {
     conditions.push(eq(tasks.projectId, filters.projectId));
@@ -133,6 +112,48 @@ async function getProjectIdsByWorkspace(
   return rows.map((row) => row.id);
 }
 
+/**
+ * Crea una condición SQL para filtrar tareas por workspace.
+ * Si workspaceId es undefined, usa buildTaskVisibility (default, todos los workspaces).
+ * Si workspaceId es null, filtra tareas personales.
+ * Si workspaceId es un UUID, filtra tareas en ese workspace.
+ * Si el workspace no tiene proyectos accesibles, retorna null (señal de "retorna vacío").
+ */
+async function buildWorkspaceVisibility(
+  session: AuthUser,
+  accessibleProjects: string[],
+  workspaceId?: string | null
+): Promise<SQL<unknown> | null> {
+  if (workspaceId === undefined) {
+    return buildTaskVisibility(session.uid, accessibleProjects);
+  }
+
+  const queuedIds = await getProjectIdsByWorkspace(
+    session.uid,
+    accessibleProjects,
+    workspaceId
+  );
+
+  if (queuedIds.length === 0 && workspaceId !== null) {
+    return null; // Empty workspace
+  }
+
+  if (workspaceId === null) {
+    if (queuedIds.length > 0) {
+      return or(
+        inArray(tasks.projectId, queuedIds),
+        and(isNull(tasks.projectId), eq(tasks.userId, session.uid))
+      )!;
+    } else {
+      return and(isNull(tasks.projectId), eq(tasks.userId, session.uid))!;
+    }
+  } else if (queuedIds.length > 0) {
+    return inArray(tasks.projectId, queuedIds);
+  }
+
+  return null;
+}
+
 export async function getTaskById(taskId: string): Promise<Task | null> {
   const session = await requireSession();
 
@@ -148,17 +169,26 @@ export async function getTaskById(taskId: string): Promise<Task | null> {
   return mapTask(row);
 }
 
-export async function getOverdueTasks(): Promise<Task[]> {
+export async function getOverdueTasks(
+  workspaceId?: string | null
+): Promise<Task[]> {
   const session = await requireSession();
   const now = new Date();
   const accessibleProjects = await getAccessibleProjectIds(session);
+
+  const visibilityCondition = await buildWorkspaceVisibility(
+    session,
+    accessibleProjects,
+    workspaceId
+  );
+  if (visibilityCondition === null) return [];
 
   const rows = await db
     .select()
     .from(tasks)
     .where(
       and(
-        buildTaskVisibility(session.uid, accessibleProjects),
+        visibilityCondition,
         eq(tasks.isArchived, false),
         lt(tasks.dueDate, now),
         notInArray(tasks.status, ["completed", "cancelled"])
@@ -176,20 +206,32 @@ export async function getOverdueTasks(): Promise<Task[]> {
  * Es la UNIÓN de las tarjetas "Vencidas" y "Para hoy" del dashboard, no su
  * suma: una tarea que vencía hoy más temprano cuenta en ambas tarjetas pero
  * una sola vez aquí.
+ *
+ * Nota: Lee getActiveWorkspaceId() internamente porque es llamado como
+ * Server Action directo desde un client component (badge-provider.tsx),
+ * sin Server Component padre que pase el workspace.
  */
 export async function getPendingBadgeCount(): Promise<number> {
   const session = await requireSession();
   const accessibleProjects = await getAccessibleProjectIds(session);
+  const activeWorkspaceId = await getActiveWorkspaceId();
 
   const endOfToday = new Date();
   endOfToday.setHours(23, 59, 59, 999);
+
+  const visibilityCondition = await buildWorkspaceVisibility(
+    session,
+    accessibleProjects,
+    activeWorkspaceId
+  );
+  if (visibilityCondition === null) return 0;
 
   const rows = await db
     .select({ id: tasks.id })
     .from(tasks)
     .where(
       and(
-        buildTaskVisibility(session.uid, accessibleProjects),
+        visibilityCondition,
         eq(tasks.isArchived, false),
         isNotNull(tasks.dueDate),
         lte(tasks.dueDate, endOfToday),
@@ -218,16 +260,25 @@ export async function getArchivedTasks(): Promise<Task[]> {
   return rows.map(mapTask);
 }
 
-export async function getTasksForCalendar(): Promise<Task[]> {
+export async function getTasksForCalendar(
+  workspaceId?: string | null
+): Promise<Task[]> {
   const session = await requireSession();
   const accessibleProjects = await getAccessibleProjectIds(session);
+
+  const visibilityCondition = await buildWorkspaceVisibility(
+    session,
+    accessibleProjects,
+    workspaceId
+  );
+  if (visibilityCondition === null) return [];
 
   const rows = await db
     .select()
     .from(tasks)
     .where(
       and(
-        buildTaskVisibility(session.uid, accessibleProjects),
+        visibilityCondition,
         eq(tasks.isArchived, false),
         gt(tasks.dueDate, new Date(0))
       )
@@ -239,6 +290,11 @@ export async function getTasksForCalendar(): Promise<Task[]> {
     .sort((a, b) => (a.dueDate ?? "").localeCompare(b.dueDate ?? ""));
 }
 
+/**
+ * Nota: Lee getActiveWorkspaceId() internamente porque es llamado como
+ * Server Action directo desde un client component (sidebar-search.tsx),
+ * sin Server Component padre que pase el workspace.
+ */
 export async function searchTasks(query: string): Promise<Task[]> {
   const session = await requireSession();
   const term = query.trim();
@@ -246,13 +302,21 @@ export async function searchTasks(query: string): Promise<Task[]> {
 
   const pattern = `%${term}%`;
   const accessibleProjects = await getAccessibleProjectIds(session);
+  const activeWorkspaceId = await getActiveWorkspaceId();
+
+  const visibilityCondition = await buildWorkspaceVisibility(
+    session,
+    accessibleProjects,
+    activeWorkspaceId
+  );
+  if (visibilityCondition === null) return [];
 
   const rows = await db
     .select()
     .from(tasks)
     .where(
       and(
-        buildTaskVisibility(session.uid, accessibleProjects),
+        visibilityCondition,
         eq(tasks.isArchived, false),
         or(ilike(tasks.title, pattern), ilike(tasks.description, pattern))
       )

@@ -1,6 +1,7 @@
 "use client";
 
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useTransition } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { Building2, Check, ChevronsUpDown, Settings2, UserRound } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -14,6 +15,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { setActiveWorkspace } from "@/features/workspaces/actions";
 
 export type SidebarWorkspace = {
   id: string;
@@ -50,19 +52,20 @@ function PersonalDot({ isWorkspacesPage }: { isWorkspacesPage: boolean }) {
 
 export function WorkspaceSwitcher({
   workspaces,
+  activeWorkspaceId = null,
   className,
 }: {
   workspaces: SidebarWorkspace[];
+  activeWorkspaceId?: string | null;
   className?: string;
 }) {
   const router = useRouter();
   const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const activeWsId = searchParams.get("ws");
+  const [isPending, startTransition] = useTransition();
 
   const isWorkspacesPage = pathname.startsWith("/dashboard/workspaces");
-  const current = activeWsId
-    ? workspaces.find((ws) => ws.id === activeWsId)
+  const current = activeWorkspaceId
+    ? workspaces.find((ws) => ws.id === activeWorkspaceId)
     : undefined;
 
   const label = current
@@ -71,8 +74,15 @@ export function WorkspaceSwitcher({
       ? "Espacios de trabajo"
       : "Personal";
 
-  function navigateTo(href: string) {
-    router.push(href);
+  function selectWorkspace(wsId: string | null) {
+    startTransition(async () => {
+      await setActiveWorkspace(wsId);
+      router.refresh();
+    });
+  }
+
+  function navigateToManageWorkspaces() {
+    router.push("/dashboard/workspaces");
   }
 
   return (
@@ -106,25 +116,25 @@ export function WorkspaceSwitcher({
         <DropdownMenuGroup className="flex flex-col gap-0.5 p-1">
           <DropdownMenuLabel>Espacios de trabajo</DropdownMenuLabel>
           <DropdownMenuItem
-            onSelect={() => navigateTo("/dashboard/projects")}
+            onSelect={() => selectWorkspace(null)}
+            disabled={isPending}
             className="flex items-center justify-between gap-2"
           >
             <div className="flex items-center gap-2">
               <PersonalDot isWorkspacesPage={isWorkspacesPage} />
               <span>Personal</span>
             </div>
-            {activeWsId === null && !isWorkspacesPage && (
+            {activeWorkspaceId === null && !isWorkspacesPage && (
               <Check className="size-4 text-primary" />
             )}
           </DropdownMenuItem>
           {workspaces.map((ws) => {
-            const isActive = ws.id === activeWsId;
+            const isActive = ws.id === activeWorkspaceId;
             return (
               <DropdownMenuItem
                 key={ws.id}
-                onSelect={() =>
-                  navigateTo(`/dashboard/projects?ws=${ws.id}`)
-                }
+                onSelect={() => selectWorkspace(ws.id)}
+                disabled={isPending}
                 className="flex items-center justify-between gap-2"
               >
                 <div className="flex min-w-0 items-center gap-2">
@@ -138,7 +148,7 @@ export function WorkspaceSwitcher({
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
         <DropdownMenuItem
-          onSelect={() => navigateTo("/dashboard/workspaces")}
+          onSelect={navigateToManageWorkspaces}
           className="gap-2"
         >
           <Settings2 className="size-4" />

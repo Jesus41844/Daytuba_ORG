@@ -12,7 +12,8 @@ import {
   workspaces,
 } from "@/db/schema";
 import { requireSession } from "@/lib/auth/session";
-import { requireWorkspaceAdmin } from "@/lib/access";
+import { getWorkspaceRole, requireWorkspaceAdmin } from "@/lib/access";
+import { setActiveWorkspaceCookie } from "@/lib/active-workspace";
 import { sendPushNotification } from "@/lib/push";
 import { createNotification } from "@/features/notifications/service";
 import {
@@ -382,6 +383,25 @@ export async function leaveWorkspace(workspaceId: string): Promise<ActionResult>
       );
 
     revalidateWorkspace();
+    return { success: true, data: undefined };
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
+export async function setActiveWorkspace(
+  workspaceId: string | null
+): Promise<ActionResult<void>> {
+  try {
+    const session = await requireSession();
+
+    if (workspaceId !== null) {
+      const role = await getWorkspaceRole(workspaceId, session.uid);
+      if (!role) throw new NotFoundError("El espacio de trabajo");
+    }
+
+    await setActiveWorkspaceCookie(workspaceId);
+    revalidatePath("/(app)", "layout");
     return { success: true, data: undefined };
   } catch (error) {
     return toActionError(error);

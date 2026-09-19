@@ -319,12 +319,14 @@ function SidebarBody({
   compact,
   sharedProjects = [],
   workspaces = [],
+  activeWorkspaceId = null,
   onNavigate,
 }: {
   user: AuthUser | null;
   compact: boolean;
   sharedProjects?: Project[];
   workspaces?: SidebarWorkspace[];
+  activeWorkspaceId?: string | null;
   onNavigate?: () => void;
 }) {
   const { collapse, expand } = useSidebarWidth();
@@ -371,7 +373,11 @@ function SidebarBody({
           <>
             <SidebarSearch />
             <Separator className="opacity-50" />
-            <WorkspaceSwitcher workspaces={workspaces} className="mx-2 my-2" />
+            <WorkspaceSwitcher
+              workspaces={workspaces}
+              activeWorkspaceId={activeWorkspaceId}
+              className="mx-2 my-2"
+            />
           </>
         )}
         <ScrollArea className="flex-1 py-3">
@@ -393,10 +399,12 @@ export function Sidebar({
   user,
   sharedProjects = [],
   workspaces = [],
+  activeWorkspaceId = null,
 }: {
   user: AuthUser | null;
   sharedProjects?: Project[];
   workspaces?: SidebarWorkspace[];
+  activeWorkspaceId?: string | null;
 }) {
   const [mobileOpen, setMobileOpen] = React.useState(false);
   const { width, collapsed } = useSidebarWidth();
@@ -419,6 +427,7 @@ export function Sidebar({
               compact={false}
               sharedProjects={sharedProjects}
               workspaces={workspaces}
+              activeWorkspaceId={activeWorkspaceId}
               onNavigate={() => setMobileOpen(false)}
             />
           </SheetContent>
@@ -435,6 +444,7 @@ export function Sidebar({
           compact={collapsed}
           sharedProjects={sharedProjects}
           workspaces={workspaces}
+          activeWorkspaceId={activeWorkspaceId}
         />
       </aside>
     </>

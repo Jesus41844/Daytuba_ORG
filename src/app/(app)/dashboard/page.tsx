@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 
 import { getSession } from "@/lib/auth/session";
+import { getActiveWorkspaceId } from "@/lib/active-workspace";
 import { getUserTasks, getOverdueTasks } from "@/features/tasks/queries";
 import { getUserCategories } from "@/features/categories/queries";
 import { TaskCard } from "@/features/tasks/components/task-card";
@@ -44,9 +45,11 @@ export default async function DashboardPage() {
   const session = await getSession();
   if (!session) redirect("/login");
 
+  const activeWorkspaceId = await getActiveWorkspaceId();
+
   const [tasks, overdue, categories] = await Promise.all([
-    getUserTasks(),
-    getOverdueTasks().catch(() => []),
+    getUserTasks({ workspaceId: activeWorkspaceId }),
+    getOverdueTasks(activeWorkspaceId).catch(() => []),
     getUserCategories(),
   ]);
 

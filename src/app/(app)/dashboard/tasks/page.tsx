@@ -4,12 +4,13 @@ import { redirect } from "next/navigation";
 import { Archive, Kanban, List, UserRound } from "lucide-react";
 
 import { getSession } from "@/lib/auth/session";
+import { getActiveWorkspaceId } from "@/lib/active-workspace";
 import {
   getUserTasks,
   getAssignableUsers,
   type TaskFilters,
 } from "@/features/tasks/queries";
-import { getUserProjects } from "@/features/projects/queries";
+import { getProjectsByWorkspace } from "@/features/projects/queries";
 import { getUserCategories } from "@/features/categories/queries";
 import { TaskList } from "@/features/tasks/components/task-list";
 import { KanbanBoard } from "@/features/tasks/components/kanban-board";
@@ -79,6 +80,8 @@ export default async function TasksPage({
   const session = await getSession();
   if (!session) redirect("/login");
 
+  const activeWorkspaceId = await getActiveWorkspaceId();
+
   const { status, priority, category, assignee, create, view } =
     await searchParams;
   const activeView = view === "kanban" ? "kanban" : ("list" as const);
@@ -97,8 +100,9 @@ export default async function TasksPage({
       priority: validPriority,
       categoryId: category,
       assigneeId: assignedToMe ? session.uid : undefined,
+      workspaceId: activeWorkspaceId,
     }),
-    getUserProjects(),
+    getProjectsByWorkspace(activeWorkspaceId),
     getUserCategories(),
     getAssignableUsers(),
   ]);

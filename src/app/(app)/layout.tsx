@@ -2,6 +2,7 @@ import * as React from "react";
 import { redirect } from "next/navigation";
 
 import { getSession } from "@/lib/auth/session";
+import { getActiveWorkspaceId } from "@/lib/active-workspace";
 import { getSharedProjects } from "@/features/projects/queries";
 import { getUserWorkspaces } from "@/features/workspaces/queries";
 import { Sidebar } from "@/components/layout/sidebar";
@@ -21,8 +22,11 @@ export default async function AppLayout({
   const session = await getSession();
   if (!session) redirect("/api/auth/clear-session");
 
-  const sharedProjects = await getSharedProjects();
-  const workspaces = await getUserWorkspaces().catch(() => []);
+  const [sharedProjects, workspaceList, activeWorkspaceId] = await Promise.all([
+    getSharedProjects(),
+    getUserWorkspaces().catch(() => []),
+    getActiveWorkspaceId(),
+  ]);
 
   return (
     <SidebarProvider>
@@ -31,12 +35,13 @@ export default async function AppLayout({
         <Sidebar
           user={session}
           sharedProjects={sharedProjects}
-          workspaces={workspaces.map(({ workspace, role }) => ({
+          workspaces={workspaceList.map(({ workspace, role }) => ({
             id: workspace.id,
             name: workspace.name,
             color: workspace.color,
             role,
           }))}
+          activeWorkspaceId={activeWorkspaceId}
         />
         <div className="flex min-h-svh flex-col max-lg:pl-0 lg:pl-(--sidebar-width)">
           <main className="w-full flex-1 px-4 py-4 sm:px-6 lg:px-8 lg:py-6">

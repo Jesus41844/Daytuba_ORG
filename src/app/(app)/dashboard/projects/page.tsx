@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 
 import { getSession } from "@/lib/auth/session";
+import { getActiveWorkspaceId } from "@/lib/active-workspace";
 import { getProjectsByWorkspace } from "@/features/projects/queries";
 import { getUserTasks } from "@/features/tasks/queries";
 import { getUserWorkspaces } from "@/features/workspaces/queries";
@@ -13,23 +14,17 @@ export const metadata: Metadata = {
   title: "Proyectos | Daytuba Tasks",
 };
 
-export default async function ProjectsPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ ws?: string | string[] }>;
-}) {
+export default async function ProjectsPage() {
   const session = await getSession();
   if (!session) redirect("/login");
 
-  const { ws } = await searchParams;
-  const wsId = Array.isArray(ws) ? ws[0] : ws;
-
+  const activeWorkspaceId = await getActiveWorkspaceId();
   const workspaceList = await getUserWorkspaces().catch(() => []);
 
-  const activeWorkspace = wsId
-    ? workspaceList.find((entry) => entry.workspace.id === wsId)
+  const activeWorkspace = activeWorkspaceId
+    ? workspaceList.find((entry) => entry.workspace.id === activeWorkspaceId)
     : undefined;
-  const activeWorkspaceId = activeWorkspace?.workspace.id ?? null;
+
 
   const [projects, tasks] = await Promise.all([
     getProjectsByWorkspace(activeWorkspaceId).catch(() => []),
