@@ -51,3 +51,7 @@ scripts/migration-data.json
 
 # backups de base de datos (contienen datos sensibles)
 /backup-*.sql
+
+# skills de andamiaje de agente: no son parte de la app
+/.agents/skills/firebase-*
+/.claude

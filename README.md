@@ -1,5 +1,8 @@
 # Daytuba Tasks
 
+[![tests](https://github.com/Jesus41844/Daytuba_ORG/actions/workflows/tests.yml/badge.svg)](https://github.com/Jesus41844/Daytuba_ORG/actions/workflows/tests.yml)
+[![licencia](https://img.shields.io/badge/licencia-MIT-blue.svg)](LICENSE)
+
 Plataforma de gestión de tareas para estudiantes UTP, construida con Next.js 16, PostgreSQL y shadcn/ui. Stack 100% self-hosted en Docker.
 
 ## Stack
